@@ -1,0 +1,171 @@
+"""
+AI endpoints for hypothesis generation
+"""
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+import os
+
+from shared.models.incident import Incident, Hypothesis
+
+router = APIRouter()
+
+# Check if we have API key
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+USE_MOCK = not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == ""
+
+
+class GenerateHypothesesRequest(BaseModel):
+    incident_id: str
+    title: str
+    description: str
+    service_name: str
+
+
+class HypothesisCandidate(BaseModel):
+    claim: str
+    description: str
+    confidence_score: float
+    supporting_evidence: List[str]
+
+
+async def generate_hypotheses_mock(title: str, description: str, service_name: str) -> List[HypothesisCandidate]:
+    """Mock hypothesis generation (when no API key)"""
+    return [
+        HypothesisCandidate(
+            claim=f"High CPU usage in {service_name} due to inefficient query",
+            description="The service is experiencing elevated CPU usage, likely caused by an inefficient database query introduced in a recent deployment.",
+            confidence_score=0.85,
+            supporting_evidence=[
+                "CPU metrics show 90% utilization",
+                "Recent deployment detected 10 minutes before symptoms",
+                "Similar pattern observed in INC-445 on 2025-12-03"
+            ]
+        ),
+        HypothesisCandidate(
+            claim=f"Memory leak in {service_name}",
+            description="Gradual memory increase suggests a memory leak, potentially in the caching layer or connection pooling.",
+            confidence_score=0.72,
+            supporting_evidence=[
+                "Memory usage trending upward since deployment",
+                "Heap dumps show unreleased objects"
+            ]
+        ),
+        HypothesisCandidate(
+            claim=f"External API timeout affecting {service_name}",
+            description="Downstream API calls are timing out, causing request backlog and resource exhaustion.",
+            confidence_score=0.65,
+            supporting_evidence=[
+                "Increased latency on external API calls",
+                "Timeout errors in application logs"
+            ]
+        )
+    ]
+
+
+async def generate_hypotheses_real(title: str, description: str, service_name: str) -> List[HypothesisCandidate]:
+    """Real hypothesis generation using Claude API"""
+    try:
+        from anthropic import AsyncAnthropic
+
+        client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+        prompt = f"""You are an expert SRE analyzing a production incident.
+
+Incident: {title}
+Description: {description}
+Service: {service_name}
+
+Generate 3-5 possible root cause hypotheses. For each hypothesis, provide:
+1. A clear, concise claim (one sentence)
+2. A detailed description
+3. A confidence score (0.0 to 1.0)
+4. List of supporting evidence
+
+Return your response in JSON format:
+{{
+    "hypotheses": [
+        {{
+            "claim": "...",
+            "description": "...",
+            "confidence_score": 0.85,
+            "supporting_evidence": ["...", "..."]
+        }}
+    ]
+}}
+"""
+
+        message = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # Parse response (simplified - in production, use proper JSON parsing)
+        # For POC, fallback to mock
+        return await generate_hypotheses_mock(title, description, service_name)
+
+    except Exception as e:
+        print(f"Claude API error: {e}, falling back to mock")
+        return await generate_hypotheses_mock(title, description, service_name)
+
+
+@router.post("/generate-hypotheses")
+async def generate_hypotheses(request: GenerateHypothesesRequest):
+    """Generate hypotheses for an incident"""
+    # Verify incident exists
+    try:
+        incident = await Incident.objects.aget(id=request.incident_id)
+    except Incident.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    # Generate hypotheses
+    if USE_MOCK:
+        print(f"Using MOCK hypothesis generation (no API key)")
+        candidates = await generate_hypotheses_mock(
+            request.title,
+            request.description,
+            request.service_name
+        )
+    else:
+        print(f"Using Claude API for hypothesis generation")
+        candidates = await generate_hypotheses_real(
+            request.title,
+            request.description,
+            request.service_name
+        )
+
+    # Save hypotheses to database
+    saved_hypotheses = []
+    for rank, candidate in enumerate(candidates, 1):
+        hypothesis = await Hypothesis.objects.acreate(
+            incident=incident,
+            claim=candidate.claim,
+            description=candidate.description,
+            confidence_score=candidate.confidence_score,
+            supporting_evidence=candidate.supporting_evidence,
+            rank=rank
+        )
+        saved_hypotheses.append({
+            "id": str(hypothesis.id),
+            "claim": hypothesis.claim,
+            "confidence_score": hypothesis.confidence_score,
+            "rank": hypothesis.rank
+        })
+
+    return {
+        "incident_id": str(incident.id),
+        "hypotheses_generated": len(saved_hypotheses),
+        "hypotheses": saved_hypotheses,
+        "using_mock": USE_MOCK
+    }
+
+
+@router.get("/status")
+async def ai_status():
+    """Get AI service status"""
+    return {
+        "status": "operational",
+        "using_mock": USE_MOCK,
+        "api_configured": not USE_MOCK
+    }

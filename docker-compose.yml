@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: sre-copilot-postgres
+    environment:
+      POSTGRES_DB: sre_copilot
+      POSTGRES_USER: sre_user
+      POSTGRES_PASSWORD: sre_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - sre-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sre_user -d sre_copilot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: sre-copilot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sre-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: sre-copilot-api-gateway
+    environment:
+      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
+      - REDIS_URL=redis://redis:6379/0
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - INCIDENT_SERVICE_URL=http://incident-service:8002
+      - AI_SERVICE_URL=http://ai-service:8003
+      - INTEGRATION_SERVICE_URL=http://integration-service:8004
+      - ENVIRONMENT=development
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/api-gateway:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-auth-service
+    environment:
+      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=your-secret-key-change-in-production
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/auth-service:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+  # Incident Service
+  incident-service:
+    build:
+      context: ./services/incident-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-incident-service
+    environment:
+      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
+      - REDIS_URL=redis://redis:6379/0
+      - AI_SERVICE_URL=http://ai-service:8003
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/incident-service:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+
+  # AI Service
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-ai-service
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports:
+      - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/ai-service:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+
+  # Integration Service
+  integration-service:
+    build:
+      context: ./services/integration-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-integration-service
+    environment:
+      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/integration-service:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: sre-copilot-frontend
+    environment:
+      - VITE_API_GATEWAY_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api-gateway
+    networks:
+      - sre-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  sre-network:
+    driver: bridge

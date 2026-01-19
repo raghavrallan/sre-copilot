@@ -1,0 +1,73 @@
+"""
+API Gateway - Main entry point for all requests
+"""
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import httpx
+import os
+import sys
+
+# Add shared to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+
+from app.api import health, proxy
+from app.core.config import settings
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="SRE Copilot API Gateway",
+    description="Main API Gateway for SRE Copilot microservices",
+    version="1.0.0"
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(health.router, prefix="/health", tags=["Health"])
+app.include_router(proxy.router, prefix="/api/v1", tags=["API"])
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler"""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "type": type(exc).__name__
+        }
+    )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Startup event"""
+    print("🚀 API Gateway starting up...")
+    print(f"Environment: {settings.ENVIRONMENT}")
+    print(f"Auth Service: {settings.AUTH_SERVICE_URL}")
+    print(f"Incident Service: {settings.INCIDENT_SERVICE_URL}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown event"""
+    print("👋 API Gateway shutting down...")
+
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "service": "SRE Copilot API Gateway",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs"
+    }
