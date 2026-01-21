@@ -4,14 +4,10 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -24,9 +20,10 @@ wheels/
 venv/
 ENV/
 env/
+lib/python*/
+lib64/
 
 # Django
-*.log
 db.sqlite3
 db.sqlite3-journal
 
@@ -51,7 +48,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-dist/
+**/dist/
+**/build/
 .cache/
 
 # Docker
@@ -59,7 +57,7 @@ dist/
 
 # Logs
 logs/
-*.log
+**/*.log
 
 # Coverage
 htmlcov/
