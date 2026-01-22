@@ -184,6 +184,28 @@ services:
       - ./services/websocket-service:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload
 
+  # Audit Service (NEW)
+  audit-service:
+    build:
+      context: ./services/audit-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-audit-service
+    environment:
+      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8008:8008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/audit-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload
+
   # Frontend
   frontend:
     build:
