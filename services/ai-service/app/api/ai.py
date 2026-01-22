@@ -71,10 +71,15 @@ async def generate_hypotheses_real(title: str, description: str, service_name: s
     try:
         from openai import AsyncAzureOpenAI
 
+        print(f"🤖 Initializing Azure OpenAI client...")
+        print(f"   Endpoint: {AZURE_OPENAI_ENDPOINT}")
+        print(f"   Deployment: {AZURE_OPENAI_DEPLOYMENT}")
+        print(f"   API Key: {'*' * 20}{AZURE_OPENAI_API_KEY[-4:] if AZURE_OPENAI_API_KEY else 'NOT SET'}")
+
         # Initialize Azure OpenAI client
         client = AsyncAzureOpenAI(
             api_key=AZURE_OPENAI_API_KEY,
-            api_version="2025-04-01-preview",
+            api_version="2024-08-01-preview",  # Use stable API version
             azure_endpoint=AZURE_OPENAI_ENDPOINT
         )
 
@@ -103,23 +108,50 @@ Return your response in JSON format:
 }}
 """
 
-        # Call Azure OpenAI GPT-4
-        response = await client.chat.completions.create(
-            model=AZURE_OPENAI_DEPLOYMENT,
-            messages=[
-                {"role": "system", "content": "You are an expert SRE assistant that generates root cause hypotheses for production incidents. Always respond in valid JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            max_completion_tokens=2000,
-            response_format={"type": "json_object"}
-        )
+        print(f"📤 Sending request to Azure OpenAI...")
+
+        # Call Azure OpenAI GPT-4 - try without response_format first
+        try:
+            response = await client.chat.completions.create(
+                model=AZURE_OPENAI_DEPLOYMENT,
+                messages=[
+                    {"role": "system", "content": "You are an expert SRE assistant that generates root cause hypotheses for production incidents. Always respond in valid JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_completion_tokens=2000
+            )
+        except Exception as e:
+            print(f"❌ API call failed: {e}")
+            raise
+
+        print(f"📥 Received response from Azure OpenAI")
+        print(f"   Response type: {type(response)}")
+        print(f"   Choices count: {len(response.choices) if response.choices else 0}")
 
         # Parse JSON response
-        content = response.choices[0].message.content
-        print(f"Azure OpenAI response: {content}")
+        if not response.choices or len(response.choices) == 0:
+            print("❌ No choices in response")
+            raise ValueError("No choices in response")
 
-        result = json.loads(content)
+        content = response.choices[0].message.content
+        print(f"📄 Response content length: {len(content) if content else 0}")
+        print(f"📄 Response content (first 500 chars): {content[:500] if content else 'EMPTY'}")
+
+        if not content or content.strip() == "":
+            print("❌ Empty response from Azure OpenAI")
+            raise ValueError("Empty response from Azure OpenAI")
+
+        # Try to parse JSON
+        try:
+            result = json.loads(content)
+            print(f"✅ Successfully parsed JSON response")
+        except json.JSONDecodeError as je:
+            print(f"❌ JSON parse error: {je}")
+            print(f"   Content: {content}")
+            raise
+
         hypotheses_data = result.get("hypotheses", [])
+        print(f"📊 Extracted {len(hypotheses_data)} hypotheses")
 
         # Convert to HypothesisCandidate objects
         candidates = []
@@ -131,10 +163,15 @@ Return your response in JSON format:
                 supporting_evidence=h.get("supporting_evidence", [])
             ))
 
-        return candidates if candidates else await generate_hypotheses_mock(title, description, service_name)
+        if len(candidates) == 0:
+            print("⚠️  No hypotheses generated, using mock")
+            return await generate_hypotheses_mock(title, description, service_name)
+
+        print(f"✅ Successfully generated {len(candidates)} hypotheses")
+        return candidates
 
     except Exception as e:
-        print(f"Azure OpenAI API error: {e}, falling back to mock")
+        print(f"❌ Azure OpenAI API error: {e}, falling back to mock")
         import traceback
         traceback.print_exc()
         return await generate_hypotheses_mock(title, description, service_name)
