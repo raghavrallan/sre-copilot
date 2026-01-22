@@ -5,14 +5,17 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import json
 
 from shared.models.incident import Incident, Hypothesis
 
 router = APIRouter()
 
-# Check if we have API key
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-USE_MOCK = not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == ""
+# Check if we have Azure OpenAI credentials
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "sre-copilot-deployment-002")
+USE_MOCK = not AZURE_OPENAI_API_KEY or AZURE_OPENAI_API_KEY == ""
 
 
 class GenerateHypothesesRequest(BaseModel):
@@ -64,11 +67,16 @@ async def generate_hypotheses_mock(title: str, description: str, service_name: s
 
 
 async def generate_hypotheses_real(title: str, description: str, service_name: str) -> List[HypothesisCandidate]:
-    """Real hypothesis generation using Claude API"""
+    """Real hypothesis generation using Azure OpenAI GPT-4"""
     try:
-        from anthropic import AsyncAnthropic
+        from openai import AsyncAzureOpenAI
 
-        client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        # Initialize Azure OpenAI client
+        client = AsyncAzureOpenAI(
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version="2025-04-01-preview",
+            azure_endpoint=AZURE_OPENAI_ENDPOINT
+        )
 
         prompt = f"""You are an expert SRE analyzing a production incident.
 
@@ -95,18 +103,40 @@ Return your response in JSON format:
 }}
 """
 
-        message = await client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}]
+        # Call Azure OpenAI GPT-4
+        response = await client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            messages=[
+                {"role": "system", "content": "You are an expert SRE assistant that generates root cause hypotheses for production incidents. Always respond in valid JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            max_completion_tokens=2000,
+            response_format={"type": "json_object"}
         )
 
-        # Parse response (simplified - in production, use proper JSON parsing)
-        # For POC, fallback to mock
-        return await generate_hypotheses_mock(title, description, service_name)
+        # Parse JSON response
+        content = response.choices[0].message.content
+        print(f"Azure OpenAI response: {content}")
+
+        result = json.loads(content)
+        hypotheses_data = result.get("hypotheses", [])
+
+        # Convert to HypothesisCandidate objects
+        candidates = []
+        for h in hypotheses_data:
+            candidates.append(HypothesisCandidate(
+                claim=h.get("claim", "Unknown hypothesis"),
+                description=h.get("description", ""),
+                confidence_score=h.get("confidence_score", 0.5),
+                supporting_evidence=h.get("supporting_evidence", [])
+            ))
+
+        return candidates if candidates else await generate_hypotheses_mock(title, description, service_name)
 
     except Exception as e:
-        print(f"Claude API error: {e}, falling back to mock")
+        print(f"Azure OpenAI API error: {e}, falling back to mock")
+        import traceback
+        traceback.print_exc()
         return await generate_hypotheses_mock(title, description, service_name)
 
 
@@ -121,14 +151,14 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
 
     # Generate hypotheses
     if USE_MOCK:
-        print(f"Using MOCK hypothesis generation (no API key)")
+        print(f"Using MOCK hypothesis generation (no Azure OpenAI API key)")
         candidates = await generate_hypotheses_mock(
             request.title,
             request.description,
             request.service_name
         )
     else:
-        print(f"Using Claude API for hypothesis generation")
+        print(f"Using Azure OpenAI GPT-4 for hypothesis generation")
         candidates = await generate_hypotheses_real(
             request.title,
             request.description,
