@@ -23,6 +23,7 @@ class Incident(models.Model):
     """Production incident"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey('Tenant', on_delete=models.CASCADE, related_name='incidents')
+    project = models.ForeignKey('Project', on_delete=models.CASCADE, related_name='incidents')
 
     # Identification
     title = models.CharField(max_length=500)
@@ -62,6 +63,8 @@ class Incident(models.Model):
         indexes = [
             models.Index(fields=['tenant', 'state']),
             models.Index(fields=['tenant', 'detected_at']),
+            models.Index(fields=['project', 'state']),
+            models.Index(fields=['project', 'detected_at']),
             models.Index(fields=['service_name']),
         ]
 
