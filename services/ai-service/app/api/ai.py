@@ -67,13 +67,14 @@ async def generate_hypotheses_mock(title: str, description: str, service_name: s
 
 
 async def generate_hypotheses_real(title: str, description: str, service_name: str) -> List[HypothesisCandidate]:
-    """Real hypothesis generation using Azure OpenAI GPT-4"""
+    """Real hypothesis generation using Azure OpenAI GPT-4o-mini"""
     try:
         from openai import AsyncAzureOpenAI
 
         print(f"🤖 Initializing Azure OpenAI client...")
         print(f"   Endpoint: {AZURE_OPENAI_ENDPOINT}")
         print(f"   Deployment: {AZURE_OPENAI_DEPLOYMENT}")
+        print(f"   Model: gpt-4o-mini")
         print(f"   API Key: {'*' * 20}{AZURE_OPENAI_API_KEY[-4:] if AZURE_OPENAI_API_KEY else 'NOT SET'}")
 
         # Initialize Azure OpenAI client
@@ -108,12 +109,12 @@ Return your response in JSON format:
 }}
 """
 
-        print(f"📤 Sending request to Azure OpenAI...")
+        print(f"📤 Sending request to Azure OpenAI GPT-4o-mini...")
 
-        # Call Azure OpenAI GPT-4 - try without response_format first
+        # Call Azure OpenAI GPT-4o-mini
         try:
             response = await client.chat.completions.create(
-                model=AZURE_OPENAI_DEPLOYMENT,
+                model=AZURE_OPENAI_DEPLOYMENT,  # Deployment name in Azure
                 messages=[
                     {"role": "system", "content": "You are an expert SRE assistant that generates root cause hypotheses for production incidents. Always respond in valid JSON format."},
                     {"role": "user", "content": prompt}
@@ -195,7 +196,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
             request.service_name
         )
     else:
-        print(f"Using Azure OpenAI GPT-4 for hypothesis generation")
+        print(f"Using Azure OpenAI GPT-4o-mini for hypothesis generation")
         candidates = await generate_hypotheses_real(
             request.title,
             request.description,

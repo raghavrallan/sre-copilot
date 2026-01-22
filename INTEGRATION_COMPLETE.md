@@ -5,7 +5,7 @@
 ### End-to-End Flow
 ```
 Dummy App Failures → Prometheus Metrics → Alert Rules → AlertManager →
-Integration Service Webhooks → Incident Auto-Creation → Azure OpenAI GPT-4 →
+Integration Service Webhooks → Incident Auto-Creation → Azure OpenAI GPT-4o-mini →
 AI-Generated Hypotheses → Frontend Display
 ```
 
@@ -30,7 +30,7 @@ All components are **fully integrated and working**!
 - **Redis** (`:6379`) - Cache
 
 ### 3. AI Integration ✅
-- **Azure OpenAI GPT-4** successfully integrated
+- **Azure OpenAI GPT-4o-mini** successfully integrated
 - Generating 5 detailed hypotheses per incident
 - Real root cause analysis with confidence scores
 - Supporting evidence and reasoning
@@ -93,7 +93,7 @@ curl -X POST "http://localhost:8080/simulate-failure?mode=normal"
    - Creates incident in database
    - Triggers AI hypothesis generation
 
-6. **AI Service (Azure OpenAI GPT-4)**
+6. **AI Service (Azure OpenAI GPT-4o-mini)**
    - Receives incident details
    - Generates 5 hypotheses with:
      - Root cause analysis
@@ -203,7 +203,7 @@ docker logs sre-copilot-ai-service --tail 100
 ✅ **Real-time monitoring** with Prometheus
 ✅ **Automated alerting** via AlertManager
 ✅ **Webhook integration** for incident auto-creation
-✅ **AI-powered root cause analysis** with Azure OpenAI GPT-4
+✅ **AI-powered root cause analysis** with Azure OpenAI GPT-4o-mini
 ✅ **Multiple failure scenarios** for comprehensive testing
 ✅ **End-to-end visibility** from failure to hypothesis
 ✅ **Production-ready architecture** with microservices
@@ -245,7 +245,7 @@ docker logs sre-copilot-ai-service --tail 100
 The SRE Copilot platform is **fully functional** with:
 - ✅ Prometheus/Grafana monitoring integrated
 - ✅ Automated incident detection from alerts
-- ✅ Azure OpenAI GPT-4 generating real hypotheses
+- ✅ Azure OpenAI GPT-4o-mini generating real hypotheses
 - ✅ Complete end-to-end workflow tested and verified
 - ✅ 7 failure modes for comprehensive testing
 - ✅ Frontend displaying real incidents and AI analysis
@@ -264,7 +264,7 @@ You now have a working SRE Copilot platform that:
 **Total Integration Time:** ~2 hours
 **Lines of Code Added:** ~1500
 **Microservices Integrated:** 8
-**AI Models:** Azure OpenAI GPT-4
+**AI Models:** Azure OpenAI GPT-4o-mini
 **Demo Scenarios:** 7
 
 ---
