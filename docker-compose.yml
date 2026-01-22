@@ -163,6 +163,27 @@ services:
       - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
 
+  # WebSocket Service (NEW)
+  websocket-service:
+    build:
+      context: ./services/websocket-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-websocket-service
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+    ports:
+      - "8005:8005"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sre-network
+    volumes:
+      - ./services/websocket-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload
+
   # Frontend
   frontend:
     build:

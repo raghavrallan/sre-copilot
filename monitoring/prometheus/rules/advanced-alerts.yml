@@ -1,0 +1,352 @@
+groups:
+  # ==========================================
+  # Composite Alerts - Multiple Conditions
+  # ==========================================
+  - name: composite_alerts
+    interval: 30s
+    rules:
+      - alert: ServiceSeverelyDegraded
+        expr: |
+          (rate(http_requests_total{status=~"5.."}[5m]) > 0.05)
+          and
+          (histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2.0)
+          and
+          (app_cpu_usage_percent > 80)
+        for: 3m
+        labels:
+          severity: critical
+          category: composite
+          service: "{{ $labels.service }}"
+        annotations:
+          summary: "Service {{ $labels.service }} is severely degraded"
+          description: |
+            Multiple metrics indicate severe service degradation:
+            - Error rate: {{ $value | humanizePercentage }}
+            - P95 latency: {{ $value }}s
+            - CPU usage: {{ $value }}%
+            This requires immediate attention.
+
+      - alert: DatabaseImpactingService
+        expr: |
+          (rate(database_connection_errors_total[5m]) > 0)
+          and
+          (rate(http_requests_total{status="503"}[5m]) > 0.1)
+        for: 2m
+        labels:
+          severity: critical
+          category: composite
+        annotations:
+          summary: "Database issues impacting service availability"
+          description: |
+            Database connection errors are causing service unavailability:
+            - DB errors: {{ $value }} errors/sec
+            - 503 responses: {{ $value }}/sec
+
+      - alert: MemoryAndCPUSaturation
+        expr: |
+          (app_memory_usage_percent > 90)
+          and
+          (app_cpu_usage_percent > 90)
+        for: 5m
+        labels:
+          severity: critical
+          category: composite
+        annotations:
+          summary: "Service experiencing memory and CPU saturation"
+          description: "Both memory ({{ $value }}%) and CPU ({{ $value }}%) are critically high"
+
+  # ==========================================
+  # Anomaly Detection Alerts
+  # ==========================================
+  - name: anomaly_alerts
+    interval: 30s
+    rules:
+      - alert: TrafficAnomalyDetected
+        expr: |
+          abs(rate(http_requests_total[5m]) -
+              rate(http_requests_total[5m] offset 1w)) /
+              rate(http_requests_total[5m] offset 1w) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: anomaly
+        annotations:
+          summary: "Unusual traffic pattern detected on {{ $labels.service }}"
+          description: |
+            Traffic is {{ $value | humanizePercentage }} different from same time last week.
+            Current rate: {{ $value }} req/s
+            Expected rate: {{ $value }} req/s
+
+      - alert: ErrorRateAnomaly
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[10m]) >
+            avg_over_time(rate(http_requests_total{status=~"5.."}[10m])[1h:10m]) +
+            2 * stddev_over_time(rate(http_requests_total{status=~"5.."}[10m])[1h:10m])
+          )
+          and
+          (rate(http_requests_total{status=~"5.."}[10m]) > 0.01)
+        for: 5m
+        labels:
+          severity: warning
+          category: anomaly
+        annotations:
+          summary: "Error rate anomaly detected (2σ deviation)"
+          description: |
+            Error rate is significantly higher than normal (2 standard deviations).
+            Current: {{ $value }}/s
+            This indicates an unusual error pattern.
+
+      - alert: LatencySpike
+        expr: |
+          (
+            histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) >
+            avg_over_time(histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))[30m:5m]) * 2
+          )
+          and
+          (histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5)
+        for: 3m
+        labels:
+          severity: warning
+          category: anomaly
+        annotations:
+          summary: "Latency spike detected on {{ $labels.service }}"
+          description: "P95 latency is 2x higher than 30-minute average: {{ $value }}s"
+
+      - alert: UnusualRequestPattern
+        expr: |
+          abs(
+            rate(http_requests_total[5m]) -
+            avg_over_time(rate(http_requests_total[5m])[1h:5m])
+          ) /
+          avg_over_time(rate(http_requests_total[5m])[1h:5m]) > 1.0
+        for: 10m
+        labels:
+          severity: info
+          category: anomaly
+        annotations:
+          summary: "Unusual request pattern on {{ $labels.service }}"
+          description: "Request rate is {{ $value | humanizePercentage }} different from hourly average"
+
+  # ==========================================
+  # SLO / SLI Alerts
+  # ==========================================
+  - name: slo_alerts
+    interval: 30s
+    rules:
+      - alert: AvailabilitySLOBreach
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"2.."}[5m])) /
+            sum(rate(http_requests_total[5m]))
+          ) < 0.999
+        for: 5m
+        labels:
+          severity: critical
+          category: slo
+        annotations:
+          summary: "Availability SLO breached (< 99.9%)"
+          description: |
+            Service availability: {{ $value | humanizePercentage }}
+            Target: 99.9%
+            Error budget impact: High
+
+      - alert: LatencySLOBreach
+        expr: |
+          histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          category: slo
+        annotations:
+          summary: "Latency SLO breached (P99 > 1s)"
+          description: |
+            P99 latency: {{ $value }}s
+            Target: 1.0s
+            Users experiencing slow responses
+
+      - alert: ErrorBudgetBurning
+        expr: |
+          (
+            1 - (
+              sum(rate(http_requests_total{status=~"2.."}[1h])) /
+              sum(rate(http_requests_total[1h]))
+            )
+          ) > 0.001
+        for: 15m
+        labels:
+          severity: warning
+          category: slo
+        annotations:
+          summary: "Error budget burning too fast"
+          description: |
+            At current error rate, monthly error budget will be exhausted.
+            Current burn rate: {{ $value | humanizePercentage }}/hour
+            Monthly budget: 0.1%
+
+      - alert: SuccessRateSLOWarning
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"2.."}[30m])) /
+            sum(rate(http_requests_total[30m]))
+          ) < 0.995
+        for: 10m
+        labels:
+          severity: warning
+          category: slo
+        annotations:
+          summary: "Success rate below 99.5%"
+          description: "30-minute success rate: {{ $value | humanizePercentage }}"
+
+  # ==========================================
+  # Correlation Alerts - Cross-Service
+  # ==========================================
+  - name: correlation_alerts
+    interval: 30s
+    rules:
+      - alert: UpstreamServiceImpact
+        expr: |
+          (rate(http_requests_total{service="api-gateway",status=~"5.."}[5m]) > 0.05)
+          and
+          (rate(http_requests_total{service=~".*-service",status=~"5.."}[5m]) > 0.05)
+        for: 3m
+        labels:
+          severity: critical
+          category: correlation
+        annotations:
+          summary: "Upstream service failures impacting API Gateway"
+          description: |
+            Multiple services are experiencing errors simultaneously.
+            This suggests a common dependency failure.
+
+      - alert: DependencyChainFailure
+        expr: |
+          count by (job) (
+            rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+          ) > 2
+        for: 5m
+        labels:
+          severity: critical
+          category: correlation
+        annotations:
+          summary: "Multiple service failures detected (cascade)"
+          description: "{{ $value }} services are failing simultaneously"
+
+      - alert: DatabasePoolExhaustionImpact
+        expr: |
+          (database_connection_errors_total > 0)
+          and
+          (increase(http_requests_total{status="503"}[5m]) > 10)
+        for: 2m
+        labels:
+          severity: critical
+          category: correlation
+        annotations:
+          summary: "Database connection pool exhaustion causing 503 errors"
+          description: "DB connection errors correlate with increased 503 responses"
+
+  # ==========================================
+  # Predictive Alerts
+  # ==========================================
+  - name: predictive_alerts
+    interval: 1m
+    rules:
+      - alert: MemoryLeakSuspected
+        expr: |
+          deriv(app_memory_usage_percent[30m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          category: predictive
+        annotations:
+          summary: "Possible memory leak detected on {{ $labels.service }}"
+          description: |
+            Memory usage is growing at {{ $value }}%/30min.
+            If this continues, memory will be exhausted in ~{{ $value }} hours.
+
+      - alert: DiskSpaceRunningOut
+        expr: |
+          predict_linear(node_filesystem_free_bytes{mountpoint="/"}[1h], 4 * 3600) < 0
+        for: 5m
+        labels:
+          severity: warning
+          category: predictive
+        annotations:
+          summary: "Disk space will run out in ~4 hours"
+          description: |
+            Based on current usage trend, disk will be full soon.
+            Current free: {{ $value | humanize }}B
+
+      - alert: ConnectionPoolSaturationPredicted
+        expr: |
+          (active_connections / max_connections) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: predictive
+        annotations:
+          summary: "Connection pool nearing saturation ({{ $value | humanizePercentage }})"
+          description: "Connection pool will be exhausted if traffic continues"
+
+      - alert: CPUTrendIncreasing
+        expr: |
+          deriv(app_cpu_usage_percent[15m]) > 1.0
+        for: 10m
+        labels:
+          severity: info
+          category: predictive
+        annotations:
+          summary: "CPU usage trending upward on {{ $labels.service }}"
+          description: "CPU increasing at {{ $value }}%/15min - investigate if sustained"
+
+  # ==========================================
+  # Business Logic Alerts
+  # ==========================================
+  - name: business_alerts
+    interval: 30s
+    rules:
+      - alert: HighIncidentCreationRate
+        expr: |
+          rate(incidents_created_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "Unusually high rate of incident creation"
+          description: "Creating {{ $value }} incidents/sec - possible alert storm"
+
+      - alert: AIHypothesisGenerationFailure
+        expr: |
+          rate(ai_hypothesis_generation_failures_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "AI hypothesis generation failing"
+          description: "{{ $value }} hypothesis generation failures/sec"
+
+      - alert: NoIncidentsCreated
+        expr: |
+          rate(incidents_created_total[30m]) == 0
+          and
+          rate(http_requests_total{status=~"5.."}[30m]) > 0.01
+        for: 30m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "No incidents created despite errors"
+          description: "Alert integration may be broken - errors detected but no incidents created"
+
+      - alert: AlertSuppressionActive
+        expr: |
+          alert_suppression_active > 0
+        for: 1h
+        labels:
+          severity: info
+          category: business
+        annotations:
+          summary: "Alert suppression has been active for 1+ hours"
+          description: "Check if suppression should still be active"
