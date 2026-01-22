@@ -104,10 +104,14 @@ class EncryptionMiddleware(BaseHTTPMiddleware):
             }
 
             # Create encrypted response
+            # Don't copy Content-Length header as it will be wrong for encrypted content
+            headers_to_copy = {k: v for k, v in response.headers.items()
+                             if k.lower() not in ['content-length', 'content-type']}
+
             encrypted_response = JSONResponse(
                 content=encrypted_payload,
                 status_code=response.status_code,
-                headers=dict(response.headers)
+                headers=headers_to_copy
             )
 
             # Add encryption headers
@@ -121,11 +125,15 @@ class EncryptionMiddleware(BaseHTTPMiddleware):
             # If encryption fails, log error and return original response
             print(f"❌ Encryption failed: {e}")
 
-            # Return original response
+            # Return original response without Content-Length header
+            # (Response class will recalculate it)
+            headers_to_copy = {k: v for k, v in response.headers.items()
+                             if k.lower() != 'content-length'}
+
             return Response(
                 content=response_body,
                 status_code=response.status_code,
-                headers=dict(response.headers)
+                headers=headers_to_copy
             )
 
 

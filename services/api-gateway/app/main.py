@@ -28,10 +28,10 @@ app.add_middleware(
     requests_per_minute=100
 )
 
-# Add encryption middleware
+# Add encryption middleware (disabled by default, opt-in via X-Encryption-Enabled header)
 app.add_middleware(
     EncryptionMiddleware,
-    enabled=True,
+    enabled=False,
     exclude_paths=["/health", "/docs", "/openapi.json", "/redoc", "/"]
 )
 

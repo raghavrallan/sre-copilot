@@ -66,12 +66,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
         console.log('WebSocket connected')
 
         // Send authentication message
-        const authMessage: WebSocketMessage = {
+        const authMessage = {
           type: 'connect',
-          data: {
-            token,
-            tenantId: user.tenant_id,
-          },
+          token: token,
+          tenantId: user.tenant_id,
         }
         ws.send(JSON.stringify(authMessage))
       }
