@@ -1,0 +1,61 @@
+# AlertManager Configuration for SRE Copilot
+
+global:
+  resolve_timeout: 5m
+
+# Templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route configuration
+route:
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'sre-copilot-webhook'
+
+  # Child routes
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'sre-copilot-webhook'
+      continue: true
+
+    # Warning alerts - grouped notifications
+    - match:
+        severity: warning
+      group_wait: 30s
+      receiver: 'sre-copilot-webhook'
+
+# Receivers configuration
+receivers:
+  # SRE Copilot Webhook Receiver
+  # Note: For now, this is a no-op receiver
+  - name: 'sre-copilot-webhook'
+
+  # Slack receiver (optional, uncomment and configure when needed)
+  # - name: 'slack'
+  #   slack_configs:
+  #     - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+  #       channel: '#sre-alerts'
+  #       title: 'Alert: {{ .GroupLabels.alertname }}'
+  #       text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+  #       send_resolved: true
+
+# Inhibit rules (prevent alert flooding)
+inhibit_rules:
+  # Inhibit warning if critical alert is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'service']
+
+  # Inhibit HighLatency if ServiceDown is firing
+  - source_match:
+      alertname: 'ServiceDown'
+    target_match:
+      alertname: 'HighLatency'
+    equal: ['service']
