@@ -40,6 +40,7 @@ services:
       - alertmanager-data:/alertmanager
     networks:
       - monitoring
+      - sre-copilot_sre-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
@@ -94,6 +95,8 @@ services:
 networks:
   monitoring:
     driver: bridge
+  sre-copilot_sre-network:
+    external: true
 
 volumes:
   prometheus-data:

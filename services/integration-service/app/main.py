@@ -4,6 +4,8 @@ Integration Service - External integrations (Prometheus, PagerDuty, etc.)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import webhooks
+
 # Initialize FastAPI app
 app = FastAPI(
     title="SRE Copilot Integration Service",
@@ -19,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(webhooks.router, tags=["Webhooks"])
 
 
 @app.get("/health")
