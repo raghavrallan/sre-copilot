@@ -13,12 +13,26 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 
 from app.api import health, proxy
 from app.core.config import settings
+from app.middleware.encryption_middleware import EncryptionMiddleware, RateLimitMiddleware
 
 # Initialize FastAPI app
 app = FastAPI(
     title="SRE Copilot API Gateway",
     description="Main API Gateway for SRE Copilot microservices",
     version="1.0.0"
+)
+
+# Add rate limiting middleware
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=100
+)
+
+# Add encryption middleware
+app.add_middleware(
+    EncryptionMiddleware,
+    enabled=True,
+    exclude_paths=["/health", "/docs", "/openapi.json", "/redoc", "/"]
 )
 
 # CORS middleware
@@ -28,6 +42,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "X-Encryption-Enabled",
+        "X-Encryption-Key-ID"
+    ]
 )
 
 # Include routers
