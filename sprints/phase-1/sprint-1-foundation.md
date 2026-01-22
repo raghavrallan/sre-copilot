@@ -10,17 +10,21 @@
 
 By end of Sprint 1, we will have:
 - ✅ Multi-tenant database with core schema
-- ✅ Authentication working (Azure AD SSO)
-- ✅ Prometheus integration (read metrics)
-- ✅ PagerDuty webhook receiver
-- ✅ Claude API integration with caching
-- ✅ Basic API that can receive signals and query AI
+- ✅ Authentication working (JWT-based)
+- ✅ Prometheus integration (metrics collection + alerts)
+- ✅ Grafana integration (dashboard links + alerts)
+- ✅ Azure OpenAI GPT-4 integration
+- ✅ Basic API that can receive alerts and query AI
+- ✅ Dummy application generating metrics
 
 **Success Criteria:**
-- Can authenticate via Azure AD
-- Can query Prometheus metrics via API
-- Can receive PagerDuty webhooks
-- Can send a query to Claude API with prompt caching
+- Can authenticate via JWT
+- Can query Prometheus metrics via PromQL
+- Can receive Prometheus AlertManager webhooks
+- Can receive Grafana alert webhooks
+- Can send queries to Azure OpenAI GPT-4
+- Prometheus scraping dummy app metrics successfully
+- Grafana visualizing metrics successfully
 - All services running in Docker locally
 
 ---
@@ -60,7 +64,7 @@ By end of Sprint 1, we will have:
   │   │   └── signal.py
   │   ├── ai/                  # AI integration
   │   │   ├── __init__.py
-  │   │   ├── claude.py
+  │   │   ├── azure_openai.py
   │   │   └── prompts.py
   │   ├── ingestion/           # Signal ingestion
   │   │   ├── __init__.py
@@ -341,7 +345,7 @@ class Signal(models.Model):
 
 ---
 
-## Week 3: Integrations (Prometheus & PagerDuty)
+## Week 3: Integrations (Prometheus & Grafana)
 
 ### Day 1-3: Prometheus Integration
 
@@ -412,79 +416,99 @@ class Signal(models.Model):
 
 ---
 
-### Day 4-5: PagerDuty Webhook Receiver
+### Day 4-5: Grafana Integration & Alert Receivers
 
 **Tasks:**
-- [ ] Create webhook receiver endpoint
+- [ ] Create Grafana API client
+  ```python
+  # integrations/grafana.py
+  import httpx
+
+  class GrafanaIntegration:
+      def __init__(self, url: str, api_key: str):
+          self.base_url = url
+          self.api_key = api_key
+
+      async def get_dashboards(self):
+          # Fetch all dashboards
+          pass
+
+      async def get_dashboard_by_service(self, service_name: str):
+          # Find dashboard for specific service
+          pass
+  ```
+- [ ] Create AlertManager webhook receiver for Prometheus
   ```python
   # api/v1/webhooks.py
   from fastapi import APIRouter, Request, Header
 
   router = APIRouter()
 
-  @router.post("/webhooks/pagerduty")
-  async def pagerduty_webhook(
-      request: Request,
-      x_pagerduty_signature: str = Header(None)
-  ):
-      # Verify webhook signature
+  @router.post("/webhooks/alertmanager")
+  async def alertmanager_webhook(request: Request):
       body = await request.json()
 
-      # Normalize PagerDuty event
-      signal = await normalize_pagerduty_event(body)
-
-      # Queue for processing
-      await queue_signal(signal)
+      # Parse AlertManager format
+      for alert in body.get('alerts', []):
+          # Create incident from alert
+          await create_incident_from_alert(alert, source='prometheus')
 
       return {"status": "received"}
   ```
-- [ ] Implement webhook signature verification
-- [ ] Create PagerDuty event normalizer
+- [ ] Create Grafana alert webhook receiver
   ```python
-  # ingestion/normalizers.py
-  async def normalize_pagerduty_event(event: dict) -> Signal:
-      # Map PagerDuty schema to internal Signal model
+  @router.post("/webhooks/grafana")
+  async def grafana_webhook(request: Request):
+      body = await request.json()
+
+      # Parse Grafana alert format
+      await create_incident_from_alert(body, source='grafana')
+
+      return {"status": "received"}
+  ```
+- [ ] Implement alert-to-incident mapping
+  ```python
+  # ingestion/alert_handler.py
+  async def create_incident_from_alert(alert: dict, source: str):
+      # Extract severity, service, description
+      # Create incident record
+      # Link to relevant dashboards
       pass
   ```
-- [ ] Set up Redis queue for signal processing
-  ```python
-  # ingestion/queue.py
-  from bull import Bull
+- [ ] Set up Redis queue for incident processing
+- [ ] Test with mock alerts from Prometheus and Grafana
 
-  signal_queue = Bull('signal-processing', redis_config)
-
-  async def queue_signal(signal: Signal):
-      await signal_queue.add('process', signal.dict())
-  ```
-- [ ] Test with PagerDuty test webhooks
-
-**Deliverable:** Working PagerDuty webhook receiver
+**Deliverable:** Working Prometheus AlertManager & Grafana webhook receivers
 
 ---
 
 ## Week 4: AI Integration & Context Assembly
 
-### Day 1-2: Claude API Integration
+### Day 1-2: Azure OpenAI Integration
 
 **Tasks:**
-- [ ] Set up Anthropic API client
+- [ ] Set up Azure OpenAI client
   ```python
-  # ai/claude.py
-  from anthropic import Anthropic, AsyncAnthropic
+  # ai/azure_openai.py
+  from openai import AsyncAzureOpenAI
   from typing import List, Dict
+  import os
 
-  class ClaudeClient:
-      def __init__(self, api_key: str):
-          self.client = AsyncAnthropic(api_key=api_key)
+  class AzureOpenAIClient:
+      def __init__(self):
+          self.client = AsyncAzureOpenAI(
+              api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+              api_version="2025-04-01-preview",
+              azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+          )
+          self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "sre-copilot-deployment-002")
 
       async def generate_hypotheses(
           self,
           context: dict,
-          evidence: List[dict],
-          cache_prefix: str = None
+          evidence: List[dict]
       ) -> List[dict]:
-          # Generate hypothesis candidates
-          # Use prompt caching for context
+          # Generate hypothesis candidates using GPT-4
           pass
 
       async def explain_hypothesis(

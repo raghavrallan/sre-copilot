@@ -15,23 +15,28 @@
 AI-powered assistant that provides real-time context and analysis when incidents occur.
 
 **User Stories:**
-- As an on-call engineer, when I receive a PagerDuty alert, I want to immediately understand what's happening without manually correlating metrics, logs, and recent changes
+- As an on-call engineer, when I receive a Prometheus/Grafana alert, I want to immediately understand what's happening without manually correlating metrics, logs, and recent changes
 - As an SRE, I want to see what changed recently that might have caused this issue
 - As a team lead, I want to know if we've seen similar incidents before and how we resolved them
 
 **Technical Requirements:**
-- Real-time signal ingestion from PagerDuty and Prometheus
+- Real-time alert ingestion from Prometheus AlertManager and Grafana
+- Automatic incident creation from alerts with severity mapping
 - Context snapshot generation within 30 seconds of alert
 - Display in Slack within 60 seconds of alert trigger
+- Metric snapshot capture at incident detection time
 
 **Acceptance Criteria:**
-- [ ] Receives PagerDuty webhooks and processes within 5 seconds
+- [ ] Receives Prometheus AlertManager and Grafana webhooks and processes within 5 seconds
+- [ ] Creates incident record with metadata (severity, service, alert rule)
 - [ ] Generates context snapshot including:
+  - Current metric values vs baseline (from Prometheus)
   - Service topology (upstream/downstream dependencies)
   - Recent deployments (last 24 hours)
   - Traffic baseline comparisons
   - Related alerts in the same time window
   - Similar historical incidents (if any)
+  - Links to relevant Grafana dashboards
 - [ ] Posts formatted message to Slack channel
 - [ ] Response time p95 < 60 seconds end-to-end
 
@@ -74,7 +79,7 @@ Automatically generates 3-5 ranked hypotheses about incident root causes based o
 - As a manager, I want to understand the reasoning behind each hypothesis
 
 **Technical Requirements:**
-- Claude API integration for hypothesis generation
+- Azure OpenAI GPT-4 integration for hypothesis generation
 - Multi-factor confidence scoring (signal strength, temporal correlation, precedent, evidence quality)
 - Evidence linking (each hypothesis must cite specific evidence)
 - Hypothesis ranking and deduplication
@@ -272,7 +277,7 @@ Generates draft post-mortem document from incident timeline and evidence.
 
 **Technical Requirements:**
 - Template-based generation using incident data
-- Claude API for narrative generation
+- Azure OpenAI GPT-4 for narrative generation
 - Markdown output compatible with GitHub/Confluence
 - Human editing workflow (draft → review → publish)
 
@@ -468,27 +473,40 @@ Pluggable integration system for observability tools and incident management pla
 - Integration health checks
 
 **Phase 1 Integrations (MVP):**
-- **Prometheus** (metrics) - Pull-based polling
-- **PagerDuty** (incidents) - Webhook-based
+- **Prometheus** (metrics) - Pull-based metric collection with alerting rules
+- **Grafana** (visualization) - Dashboard integration and alert forwarding
+- **PagerDuty** (incidents) - Webhook-based (Future Phase)
 
 **Acceptance Criteria:**
 - [ ] Prometheus integration:
   - Configure Prometheus endpoint + credentials
   - Query metrics via PromQL
+  - Set up alerting rules for anomaly detection
   - Test connection (health check)
-  - Poll interval: 30 seconds
-- [ ] PagerDuty integration:
-  - Configure webhook URL
-  - Receive incident webhooks
-  - Parse incident data
-  - Map to internal incident model
+  - Scrape interval: 15 seconds
+  - Auto-detect incidents from alert manager rules
+- [ ] Grafana integration:
+  - Configure Grafana endpoint + API key
+  - Fetch dashboard metadata
+  - Create incident context links to relevant dashboards
+  - Forward Grafana alerts to SRE Copilot
+  - Support for unified alerting (Grafana 8+)
+- [ ] Incident auto-detection:
+  - Parse Prometheus AlertManager webhooks
+  - Parse Grafana alert webhooks
+  - Create incidents automatically from alerts
+  - Enrich incidents with metric snapshots
+  - Link to relevant Grafana dashboards
 - [ ] Integration status dashboard (admin only):
   - Last successful sync
   - Error count
   - Health status (healthy/degraded/down)
+  - Metrics ingestion rate
+  - Alert processing latency
 
 **Out of Scope for V1:**
-- Datadog, Grafana, New Relic (Phase 2)
+- Datadog, New Relic (Phase 2)
+- PagerDuty integration (Phase 2)
 - Custom integrations API
 - Integration marketplace
 
@@ -626,7 +644,7 @@ After 16 weeks, we will measure:
 | **MTTR Reduction** | 30% faster incident resolution | Compare: Time(alert→resolution) before/after |
 | **User Satisfaction** | NPS > 40 | Survey beta users |
 | **Technical Reliability** | 99%+ uptime | System monitoring |
-| **Cost per Tenant** | < $500/month | Claude API + infra costs |
+| **Cost per Tenant** | < $500/month | Azure OpenAI + infra costs |
 
 **Gate 1 Decision (Week 8):**
 If 3+ beta users ask AI before Slack → Continue Phase 1
@@ -642,11 +660,11 @@ If not → Improve Phase 1 or pivot
 
 ### External Services Required:
 - Azure AD tenant (for SSO)
-- Claude API key (Anthropic)
+- Azure OpenAI Service (GPT-4 deployment)
 - Pinecone account (vector database)
 - Slack workspace (for bot testing)
-- PagerDuty account (for integration testing)
-- Prometheus instance (for metrics testing)
+- Prometheus instance (metrics collection and alerting)
+- Grafana instance (dashboards and visualization)
 
 ### Infrastructure:
 - Azure subscription
