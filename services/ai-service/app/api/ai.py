@@ -8,6 +8,7 @@ import os
 import json
 
 from shared.models.incident import Incident, Hypothesis
+from app.services.redis_publisher import redis_publisher
 
 router = APIRouter()
 
@@ -220,6 +221,23 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
             "confidence_score": hypothesis.confidence_score,
             "rank": hypothesis.rank
         })
+
+        # Publish hypothesis.generated event to WebSocket
+        try:
+            await redis_publisher.publish_hypothesis_generated(
+                hypothesis_data={
+                    "id": str(hypothesis.id),
+                    "incident_id": str(incident.id),
+                    "claim": hypothesis.claim,
+                    "description": hypothesis.description,
+                    "confidence_score": hypothesis.confidence_score,
+                    "rank": hypothesis.rank,
+                    "supporting_evidence": hypothesis.supporting_evidence
+                },
+                tenant_id=str(incident.tenant_id)
+            )
+        except Exception as e:
+            print(f"Failed to publish hypothesis.generated event: {e}")
 
     return {
         "incident_id": str(incident.id),

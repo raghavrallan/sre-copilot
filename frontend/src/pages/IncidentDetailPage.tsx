@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import api from '../services/api'
 import { Incident, Hypothesis } from '../types/incident'
+import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
+import { useWebSocket } from '../contexts/WebSocketContext'
 
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [incident, setIncident] = useState<Incident | null>(null)
   const [hypotheses, setHypotheses] = useState<Hypothesis[]>([])
   const [loading, setLoading] = useState(true)
+  const { isConnected } = useWebSocket()
 
   useEffect(() => {
     const fetchIncidentAndHypotheses = async () => {
@@ -27,6 +30,28 @@ export default function IncidentDetailPage() {
 
     if (id) {
       fetchIncidentAndHypotheses()
+    }
+  }, [id])
+
+  // Real-time updates for incident state changes
+  useWebSocketEvent<Incident>('incident.updated', (updatedIncident: Incident) => {
+    if (updatedIncident.id === id) {
+      setIncident(updatedIncident)
+    }
+  }, [id])
+
+  // Real-time updates for new hypotheses
+  useWebSocketEvent<Hypothesis>('hypothesis.generated', (newHypothesis: Hypothesis) => {
+    if (newHypothesis.incident_id === id) {
+      setHypotheses((prev) => {
+        // Check if hypothesis already exists
+        const exists = prev.some(h => h.id === newHypothesis.id)
+        if (exists) {
+          return prev.map(h => h.id === newHypothesis.id ? newHypothesis : h)
+        }
+        // Add new hypothesis and sort by rank
+        return [...prev, newHypothesis].sort((a, b) => a.rank - b.rank)
+      })
     }
   }, [id])
 
@@ -100,13 +125,26 @@ export default function IncidentDetailPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          🤖 AI-Generated Hypotheses
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            🤖 AI-Generated Hypotheses
+          </h2>
+          {isConnected && (
+            <div className="flex items-center text-sm text-green-600">
+              <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+              Live Updates
+            </div>
+          )}
+        </div>
 
         {hypotheses.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            Generating hypotheses... This may take a few moments.
+            <div className="mb-2">Generating hypotheses... This may take a few moments.</div>
+            {isConnected && (
+              <div className="text-xs text-green-600">
+                ✓ Real-time updates enabled - hypotheses will appear automatically
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">

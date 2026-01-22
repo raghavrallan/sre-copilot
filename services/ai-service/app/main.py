@@ -14,6 +14,7 @@ from shared.utils.database import setup_django
 setup_django()
 
 from app.api import ai
+from app.services.redis_publisher import redis_publisher
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -45,9 +46,11 @@ async def health_check():
 async def startup_event():
     """Startup event"""
     print("🤖 AI Service starting up...")
+    await redis_publisher.connect()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event"""
     print("👋 AI Service shutting down...")
+    await redis_publisher.disconnect()

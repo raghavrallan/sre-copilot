@@ -33,7 +33,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchIncidents = async () => {
       try {
-        const response = await api.get('/api/v1/incidents')
+        const response = await api.get('/api/v1/incidents?limit=1000')
         setIncidents(response.data)
       } catch (error) {
         console.error('Failed to fetch incidents:', error)

@@ -11,6 +11,7 @@ export interface Incident {
 
 export interface Hypothesis {
   id: string
+  incident_id: string
   claim: string
   description: string
   confidence_score: number

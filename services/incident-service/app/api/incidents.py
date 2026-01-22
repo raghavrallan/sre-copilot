@@ -11,6 +11,7 @@ import uuid
 
 from shared.models.incident import Incident, Hypothesis, IncidentState, IncidentSeverity
 from shared.models.tenant import Tenant
+from app.services.redis_publisher import redis_publisher
 
 router = APIRouter()
 
@@ -42,6 +43,7 @@ class IncidentResponse(BaseModel):
 
 class HypothesisResponse(BaseModel):
     id: str
+    incident_id: str
     claim: str
     description: str
     confidence_score: float
@@ -118,7 +120,8 @@ async def create_incident(request: CreateIncidentRequest):
         print(f"Failed to generate hypotheses: {e}")
         # Don't fail the request if AI service is down
 
-    return IncidentResponse(
+    # Prepare response
+    incident_response = IncidentResponse(
         id=str(incident.id),
         title=incident.title,
         description=incident.description,
@@ -128,6 +131,26 @@ async def create_incident(request: CreateIncidentRequest):
         detected_at=incident.detected_at,
         created_at=incident.created_at
     )
+
+    # Publish incident.created event to WebSocket
+    try:
+        await redis_publisher.publish_incident_created(
+            incident_data={
+                "id": str(incident.id),
+                "title": incident.title,
+                "description": incident.description,
+                "service_name": incident.service_name,
+                "state": incident.state,
+                "severity": incident.severity,
+                "detected_at": incident.detected_at.isoformat(),
+                "created_at": incident.created_at.isoformat()
+            },
+            tenant_id=request.tenant_id
+        )
+    except Exception as e:
+        print(f"Failed to publish incident.created event: {e}")
+
+    return incident_response
 
 
 @router.get("/incidents/{incident_id}", response_model=IncidentResponse)
@@ -176,6 +199,7 @@ async def get_hypotheses(
     async for hypothesis in Hypothesis.objects.filter(incident=incident).order_by('rank'):
         hypotheses.append(HypothesisResponse(
             id=str(hypothesis.id),
+            incident_id=str(hypothesis.incident_id),
             claim=hypothesis.claim,
             description=hypothesis.description,
             confidence_score=hypothesis.confidence_score,
@@ -210,5 +234,23 @@ async def update_incident_state(
         incident.resolved_at = timezone.now()
 
     await incident.asave()
+
+    # Publish incident.updated event to WebSocket
+    try:
+        await redis_publisher.publish_incident_updated(
+            incident_data={
+                "id": str(incident.id),
+                "title": incident.title,
+                "description": incident.description,
+                "service_name": incident.service_name,
+                "state": incident.state,
+                "severity": incident.severity,
+                "detected_at": incident.detected_at.isoformat(),
+                "created_at": incident.created_at.isoformat()
+            },
+            tenant_id=tenant_id
+        )
+    except Exception as e:
+        print(f"Failed to publish incident.updated event: {e}")
 
     return {"status": "success", "incident_id": str(incident.id), "new_state": state}
