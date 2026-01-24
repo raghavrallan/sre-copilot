@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 from shared.utils.database import setup_django
 setup_django()
 
-from app.api import auth
+from app.api import auth, projects
 from app.core.config import settings
 
 # Initialize FastAPI app
@@ -34,6 +34,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, tags=["Auth"])
+app.include_router(projects.router, tags=["Projects"])
 
 
 @app.get("/health")

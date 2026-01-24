@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import IncidentsPage from './pages/IncidentsPage'
 import IncidentDetailPage from './pages/IncidentDetailPage'
+import AnalyticsPage from './pages/AnalyticsPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -56,6 +57,7 @@ function App() {
           <Route index element={<DashboardPage />} />
           <Route path="incidents" element={<IncidentsPage />} />
           <Route path="incidents/:id" element={<IncidentDetailPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
         </Route>
       </Routes>
     </WebSocketProvider>

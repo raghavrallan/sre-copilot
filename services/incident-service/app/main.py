@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 from shared.utils.database import setup_django
 setup_django()
 
-from app.api import incidents
+from app.api import incidents, workflow
 from app.services.redis_publisher import redis_publisher
 
 # Initialize FastAPI app
@@ -34,6 +34,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(incidents.router, tags=["Incidents"])
+app.include_router(workflow.router, tags=["Workflow"])
 
 
 @app.get("/health")

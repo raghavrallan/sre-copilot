@@ -4,6 +4,8 @@ import api from '../services/api'
 import { Incident, Hypothesis } from '../types/incident'
 import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
 import { useWebSocket } from '../contexts/WebSocketContext'
+import MetricsPanel from '../components/workflow/MetricsPanel'
+import WorkflowTimeline from '../components/workflow/WorkflowTimeline'
 
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -183,6 +185,12 @@ export default function IncidentDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Workflow Timeline */}
+      <WorkflowTimeline incidentId={id!} />
+
+      {/* AI Cost Metrics Panel */}
+      <MetricsPanel incidentId={id!} />
     </div>
   )
 }

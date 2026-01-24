@@ -23,11 +23,27 @@ export default function RegisterPage() {
 
     try {
       const response = await api.post('/api/v1/auth/register', formData)
-      const { access_token, user } = response.data
-      login(access_token, user)
+      const { access_token, user, projects } = response.data
+      login(access_token, user, projects || [])
       navigate('/')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed')
+      // Handle error detail that might be nested or an object
+      const errorData = err.response?.data
+      let errorMessage = 'Registration failed. Please try again.'
+
+      if (errorData?.detail) {
+        // Check if detail is an object with nested detail
+        if (typeof errorData.detail === 'object' && errorData.detail.detail) {
+          errorMessage = errorData.detail.detail
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail
+        } else if (typeof errorData.detail === 'object') {
+          // Handle array or other object formats
+          errorMessage = JSON.stringify(errorData.detail)
+        }
+      }
+
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

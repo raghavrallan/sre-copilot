@@ -1,0 +1,12 @@
+Task ID,Task Name,Priority,Status,Progress %,Expected Impact,Dependencies,Notes
+1,Analyze current AI service cost and request patterns,P0,DONE,100%,Documentation,None,✅ Identified 144+ requests/incident issue
+2,Add caching layer to prevent duplicate AI requests,P1,DONE,100%,50-90% cost reduction,Task 1,✅ DB cache + Redis locks implemented
+3,Implement AI request batching for multiple incidents,P2,DONE,100%,5-10x cost reduction,Task 2,✅ Batch endpoint created - max 10 incidents
+4,Optimize AI prompts to reduce token usage,P1,DONE,100%,40-60% cost reduction,Task 1,✅ Prompts reduced 500→200 tokens
+5,Add comprehensive token usage tracking and metrics,P1,DONE,100%,Full visibility,Task 1,✅ AIRequest model tracks all costs
+6,Create pipeline workflow tracking system,P2,DONE,100%,Visibility,Task 5,✅ AnalysisStep model + WorkflowTimeline UI
+7,Implement log retrieval and snippet extraction,P3,PENDING,0%,Better AI accuracy,Task 6,⏳ Future enhancement (optional)
+8,Build new backend API for workflow tracking,P2,DONE,100%,Backend complete,Task 5,✅ Analytics + workflow endpoints
+9,Create new UI for workflow visualization,P2,DONE,100%,User visibility,Task 8,✅ MetricsPanel + WorkflowTimeline + AnalyticsPage
+10,Add cost analytics dashboard,P3,DONE,100%,Monitoring,Task 8,✅ Full analytics page with charts
+11,Test and validate optimizations with load test,P1,READY,0%,Validation,Tasks 2-5,⏳ Ready - waiting for Azure API key

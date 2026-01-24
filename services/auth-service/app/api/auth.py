@@ -1,7 +1,7 @@
 """
 Authentication endpoints
 """
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Response, Cookie
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from django.utils import timezone
@@ -9,7 +9,16 @@ import uuid
 
 from shared.models.tenant import User, Tenant
 from shared.models.project import Project, ProjectMember, ProjectRole
-from app.core.security import verify_password, get_password_hash, create_access_token, verify_token
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_refresh_token,
+    verify_token,
+    set_auth_cookies,
+    clear_auth_cookies,
+    TOKEN_TYPE_REFRESH
+)
 
 router = APIRouter()
 
@@ -34,7 +43,7 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(request: RegisterRequest):
+async def register(request: RegisterRequest, response: Response):
     """Register a new user and tenant"""
     # Check if user already exists
     if await User.objects.filter(email=request.email).aexists():
@@ -84,20 +93,25 @@ async def register(request: RegisterRequest):
             "role": membership.role
         })
 
-    # Create access token with default project
-    access_token = create_access_token(
-        data={
-            "sub": str(user.id),
-            "email": user.email,
-            "tenant_id": str(tenant.id),
-            "role": user.role,
-            "project_id": str(default_project.id),
-            "project_role": ProjectRole.OWNER
-        }
-    )
+    # Create token data
+    token_data = {
+        "sub": str(user.id),
+        "email": user.email,
+        "tenant_id": str(tenant.id),
+        "role": user.role,
+        "project_id": str(default_project.id),
+        "project_role": ProjectRole.OWNER
+    }
+
+    # Create access and refresh tokens
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set secure httpOnly cookies
+    set_auth_cookies(response, access_token, refresh_token)
 
     return {
-        "access_token": access_token,
+        "access_token": access_token,  # Still return for backward compatibility
         "token_type": "bearer",
         "user": {
             "id": str(user.id),
@@ -113,7 +127,7 @@ async def register(request: RegisterRequest):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, response: Response):
     """Login user"""
     # Find user
     try:
@@ -157,20 +171,25 @@ async def login(request: LoginRequest):
     if not projects:
         raise HTTPException(status_code=403, detail="User has no project access. Contact admin.")
 
-    # Create access token with first project
-    access_token = create_access_token(
-        data={
-            "sub": str(user.id),
-            "email": user.email,
-            "tenant_id": str(user.tenant.id),
-            "role": user.role,
-            "project_id": str(first_project.id),
-            "project_role": first_project_role
-        }
-    )
+    # Create token data
+    token_data = {
+        "sub": str(user.id),
+        "email": user.email,
+        "tenant_id": str(user.tenant.id),
+        "role": user.role,
+        "project_id": str(first_project.id),
+        "project_role": first_project_role
+    }
+
+    # Create access and refresh tokens
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set secure httpOnly cookies
+    set_auth_cookies(response, access_token, refresh_token)
 
     return {
-        "access_token": access_token,
+        "access_token": access_token,  # Still return for backward compatibility
         "token_type": "bearer",
         "user": {
             "id": str(user.id),
@@ -312,3 +331,86 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
         }
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.post("/refresh")
+async def refresh_token(
+    response: Response,
+    refresh_token: Optional[str] = Cookie(None)
+):
+    """Refresh access token using refresh token"""
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token not found")
+
+    # Verify refresh token
+    payload = verify_token(refresh_token, token_type=TOKEN_TYPE_REFRESH)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    # Get user
+    try:
+        user = await User.objects.select_related('tenant').aget(id=payload["sub"])
+    except User.DoesNotExist:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get user's first active project
+    first_project = None
+    first_project_role = None
+    async for membership in ProjectMember.objects.filter(user=user).select_related('project'):
+        if membership.project.is_active:
+            first_project = membership.project
+            first_project_role = membership.role
+            break
+
+    if not first_project:
+        raise HTTPException(status_code=403, detail="User has no active project")
+
+    # Create new access token
+    token_data = {
+        "sub": str(user.id),
+        "email": user.email,
+        "tenant_id": str(user.tenant.id),
+        "role": user.role,
+        "project_id": str(first_project.id),
+        "project_role": first_project_role
+    }
+
+    new_access_token = create_access_token(data=token_data)
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    # Set new cookies
+    set_auth_cookies(response, new_access_token, new_refresh_token)
+
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "message": "Token refreshed successfully"
+    }
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Logout user by clearing cookies"""
+    clear_auth_cookies(response)
+    return {"message": "Logged out successfully"}
+
+
+@router.get("/ws-token")
+async def get_websocket_token(access_token: Optional[str] = Cookie(None)):
+    """Get a short-lived token for WebSocket authentication"""
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Verify access token
+    payload = verify_token(access_token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Return the access token for WebSocket use
+    # WebSocket can use the same token since it's short-lived (15 min)
+    return {
+        "token": access_token,
+        "user_id": payload.get("sub"),
+        "tenant_id": payload.get("tenant_id"),
+        "project_id": payload.get("project_id")
+    }

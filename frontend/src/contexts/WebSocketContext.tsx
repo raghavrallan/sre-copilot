@@ -46,10 +46,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const subscribersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map())
 
-  const { token, user, isAuthenticated } = useAuthStore()
+  const { user, isAuthenticated, currentProject } = useAuthStore()
 
-  const connect = useCallback(() => {
-    if (!isAuthenticated || !token || !user) {
+  const connect = useCallback(async () => {
+    if (!isAuthenticated || !user || !currentProject) {
       setConnectionStatus('disconnected')
       return
     }
@@ -60,16 +60,31 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
     try {
       setConnectionStatus('connecting')
+
+      // Fetch WebSocket token using httpOnly cookie
+      const tokenResponse = await fetch('http://localhost:8000/api/v1/auth/ws-token', {
+        credentials: 'include'
+      })
+
+      if (!tokenResponse.ok) {
+        console.error('Failed to get WebSocket token')
+        setConnectionStatus('error')
+        return
+      }
+
+      const { token } = await tokenResponse.json()
+
       const ws = new WebSocket(`${WEBSOCKET_URL}/ws`)
 
       ws.onopen = () => {
         console.log('WebSocket connected')
 
-        // Send authentication message
+        // Send authentication message with project context
         const authMessage = {
           type: 'connect',
           token: token,
           tenantId: user.tenant_id,
+          projectId: currentProject.id
         }
         ws.send(JSON.stringify(authMessage))
       }
@@ -184,7 +199,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       console.error('Error creating WebSocket connection:', error)
       setConnectionStatus('error')
     }
-  }, [isAuthenticated, token, user])
+  }, [isAuthenticated, user, currentProject])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -229,7 +244,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
   // Connect when authenticated
   useEffect(() => {
-    if (isAuthenticated && token && user) {
+    if (isAuthenticated && user && currentProject) {
       connect()
     } else {
       disconnect()
@@ -238,7 +253,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     return () => {
       disconnect()
     }
-  }, [isAuthenticated, token, user, connect, disconnect])
+  }, [isAuthenticated, user, currentProject, connect, disconnect])
 
   // Send ping every 30 seconds to keep connection alive
   useEffect(() => {

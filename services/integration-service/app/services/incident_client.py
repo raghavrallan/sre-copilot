@@ -20,7 +20,7 @@ class IncidentClient:
         description: str,
         service_name: str,
         severity: str,
-        tenant_id: str
+        project_id: str
     ) -> Optional[dict]:
         """
         Create a new incident
@@ -30,7 +30,7 @@ class IncidentClient:
             description: Incident description
             service_name: Service affected
             severity: Severity level (critical, warning, info)
-            tenant_id: Tenant ID
+            project_id: Project ID
 
         Returns:
             Created incident data or None if failed
@@ -44,7 +44,7 @@ class IncidentClient:
                         "description": description,
                         "service_name": service_name,
                         "severity": severity,
-                        "tenant_id": tenant_id
+                        "project_id": project_id
                     }
                 )
                 response.raise_for_status()

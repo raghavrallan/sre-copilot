@@ -11,6 +11,7 @@ import uuid
 
 from shared.models.incident import Incident, Hypothesis, IncidentState, IncidentSeverity
 from shared.models.tenant import Tenant
+from shared.models.project import Project
 from app.services.redis_publisher import redis_publisher
 
 router = APIRouter()
@@ -24,7 +25,7 @@ class CreateIncidentRequest(BaseModel):
     description: Optional[str] = ""
     service_name: str
     severity: str = "medium"
-    tenant_id: str
+    project_id: str
 
 
 class IncidentResponse(BaseModel):
@@ -56,20 +57,20 @@ class HypothesisResponse(BaseModel):
 
 @router.get("/incidents", response_model=List[IncidentResponse])
 async def list_incidents(
-    tenant_id: str = Query(...),
+    project_id: str = Query(...),
     skip: int = 0,
     limit: int = 10
 ):
-    """List all incidents for a tenant"""
-    # Verify tenant exists
+    """List all incidents for a project"""
+    # Verify project exists
     try:
-        tenant = await Tenant.objects.aget(id=tenant_id)
-    except Tenant.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        project = await Project.objects.aget(id=project_id)
+    except Project.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Get incidents
     incidents = []
-    async for incident in Incident.objects.filter(tenant=tenant).order_by('-detected_at')[skip:skip+limit]:
+    async for incident in Incident.objects.filter(project=project).order_by('-detected_at')[skip:skip+limit]:
         incidents.append(IncidentResponse(
             id=str(incident.id),
             title=incident.title,
@@ -87,15 +88,16 @@ async def list_incidents(
 @router.post("/incidents", response_model=IncidentResponse)
 async def create_incident(request: CreateIncidentRequest):
     """Create a new incident and generate hypotheses"""
-    # Verify tenant exists
+    # Verify project exists
     try:
-        tenant = await Tenant.objects.aget(id=request.tenant_id)
-    except Tenant.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+        project = await Project.objects.select_related('tenant').aget(id=request.project_id)
+    except Project.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Create incident
     incident = await Incident.objects.acreate(
-        tenant=tenant,
+        tenant=project.tenant,
+        project=project,
         title=request.title,
         description=request.description,
         service_name=request.service_name,
@@ -145,7 +147,7 @@ async def create_incident(request: CreateIncidentRequest):
                 "detected_at": incident.detected_at.isoformat(),
                 "created_at": incident.created_at.isoformat()
             },
-            tenant_id=request.tenant_id
+            tenant_id=str(project.tenant.id)
         )
     except Exception as e:
         print(f"Failed to publish incident.created event: {e}")
@@ -156,13 +158,13 @@ async def create_incident(request: CreateIncidentRequest):
 @router.get("/incidents/{incident_id}", response_model=IncidentResponse)
 async def get_incident(
     incident_id: str,
-    tenant_id: str = Query(...)
+    project_id: str = Query(...)
 ):
     """Get a specific incident"""
     try:
-        incident = await Incident.objects.select_related('tenant').aget(
+        incident = await Incident.objects.select_related('project').aget(
             id=incident_id,
-            tenant_id=tenant_id
+            project_id=project_id
         )
     except Incident.DoesNotExist:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -182,14 +184,14 @@ async def get_incident(
 @router.get("/incidents/{incident_id}/hypotheses", response_model=List[HypothesisResponse])
 async def get_hypotheses(
     incident_id: str,
-    tenant_id: str = Query(...)
+    project_id: str = Query(...)
 ):
     """Get hypotheses for an incident"""
-    # Verify incident exists and belongs to tenant
+    # Verify incident exists and belongs to project
     try:
-        incident = await Incident.objects.select_related('tenant').aget(
+        incident = await Incident.objects.select_related('project').aget(
             id=incident_id,
-            tenant_id=tenant_id
+            project_id=project_id
         )
     except Incident.DoesNotExist:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -214,14 +216,14 @@ async def get_hypotheses(
 async def update_incident_state(
     incident_id: str,
     state: str,
-    tenant_id: str = Query(...)
+    project_id: str = Query(...)
 ):
     """Update incident state"""
-    # Verify incident exists and belongs to tenant
+    # Verify incident exists and belongs to project
     try:
-        incident = await Incident.objects.select_related('tenant').aget(
+        incident = await Incident.objects.select_related('project').aget(
             id=incident_id,
-            tenant_id=tenant_id
+            project_id=project_id
         )
     except Incident.DoesNotExist:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -248,7 +250,7 @@ async def update_incident_state(
                 "detected_at": incident.detected_at.isoformat(),
                 "created_at": incident.created_at.isoformat()
             },
-            tenant_id=tenant_id
+            tenant_id=str(incident.project.tenant_id)
         )
     except Exception as e:
         print(f"Failed to publish incident.updated event: {e}")

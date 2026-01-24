@@ -62,8 +62,8 @@ fi
 echo ""
 
 echo "6. Checking incidents in SRE Copilot..."
-echo "   Recent incidents:"
-curl -s "http://localhost:8002/incidents?tenant_id=e56947c7-554b-4ea8-9d88-97b16477b077&skip=0&limit=3" | python -m json.tool | grep -E '"title"|"severity"|"detected_at"' | head -12
+echo "   Recent incidents (Default Project):"
+curl -s "http://localhost:8002/incidents?project_id=af98d006-d24f-4e57-be34-4e2d3b1c2a61&skip=0&limit=3" | python -m json.tool | grep -E '"title"|"severity"|"detected_at"' | head -12
 echo ""
 
 echo "7. Resetting to normal mode..."

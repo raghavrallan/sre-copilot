@@ -1,5 +1,6 @@
 import { Outlet, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../lib/stores/auth-store'
+import ProjectSwitcher from './ProjectSwitcher'
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
@@ -32,10 +33,17 @@ export default function Layout() {
                 >
                   Incidents
                 </Link>
+                <Link
+                  to="/analytics"
+                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
+                >
+                  📊 Analytics
+                </Link>
               </div>
             </div>
-            <div className="flex items-center">
-              <span className="text-sm text-gray-700 mr-4">
+            <div className="flex items-center space-x-4">
+              <ProjectSwitcher />
+              <span className="text-sm text-gray-700">
                 {user?.full_name} ({user?.tenant_name})
               </span>
               <button

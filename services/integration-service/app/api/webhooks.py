@@ -11,8 +11,9 @@ from app.services.incident_client import IncidentClient
 router = APIRouter()
 incident_client = IncidentClient()
 
-# Default tenant ID (in production, this would be determined by auth/routing)
-DEFAULT_TENANT_ID = "e56947c7-554b-4ea8-9d88-97b16477b077"
+# Default project ID (in production, this would be determined by auth/routing)
+# Using the "Default Project" that was created for existing users
+DEFAULT_PROJECT_ID = "af98d006-d24f-4e57-be34-4e2d3b1c2a61"
 
 
 def map_severity(severity: str) -> str:
@@ -75,7 +76,7 @@ async def alertmanager_webhook(webhook: AlertManagerWebhook):
             description=full_description,
             service_name=service,
             severity=map_severity(severity),
-            tenant_id=DEFAULT_TENANT_ID
+            project_id=DEFAULT_PROJECT_ID
         )
 
         if incident:
@@ -127,7 +128,7 @@ async def grafana_webhook(webhook: GrafanaWebhook):
             description=description,
             service_name=service_name,
             severity="medium",  # Grafana doesn't provide severity, use medium as default
-            tenant_id=DEFAULT_TENANT_ID
+            project_id=DEFAULT_PROJECT_ID
         )
 
         if incident:
