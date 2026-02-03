@@ -1,9 +1,9 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { Incident, CreateIncidentRequest } from '../types/incident'
-import { useRealTimeIncidents } from '../hooks/useRealTimeIncidents'
 import { useWebSocket } from '../contexts/WebSocketContext'
+import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
 import { IncidentFilters, FilterState } from '../components/common/IncidentFilters'
 import { Pagination } from '../components/common/Pagination'
 import { ListSkeleton } from '../components/common/LoadingSkeleton'
@@ -19,7 +19,9 @@ export default function IncidentsPage() {
     service: '',
   })
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+  const itemsPerPage = 20
 
   const [formData, setFormData] = useState<CreateIncidentRequest>({
     title: '',
@@ -28,24 +30,55 @@ export default function IncidentsPage() {
     severity: 'medium',
   })
 
-  // Use real-time incidents hook
-  const { incidents, setIncidents } = useRealTimeIncidents([])
+  const [incidents, setIncidents] = useState<Incident[]>([])
   const { isConnected, connectionStatus } = useWebSocket()
 
-  useEffect(() => {
-    fetchIncidents()
-  }, [])
+  // Listen for real-time updates
+  useWebSocketEvent<Incident>('incident.created', (newIncident) => {
+    if (currentPage === 1) {
+      setIncidents(prev => [newIncident, ...prev.slice(0, itemsPerPage - 1)])
+      setTotalItems(prev => prev + 1)
+    }
+  })
 
-  const fetchIncidents = async () => {
+  useWebSocketEvent<Incident>('incident.updated', (updatedIncident) => {
+    setIncidents(prev => prev.map(inc =>
+      inc.id === updatedIncident.id ? updatedIncident : inc
+    ))
+  })
+
+  const fetchIncidents = useCallback(async () => {
+    setLoading(true)
     try {
-      const response = await api.get('/api/v1/incidents?limit=1000')
-      setIncidents(response.data)
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+      })
+
+      if (filters.severity.length === 1) {
+        params.append('severity', filters.severity[0])
+      }
+      if (filters.state.length === 1) {
+        params.append('state', filters.state[0])
+      }
+      if (searchQuery) {
+        params.append('search', searchQuery)
+      }
+
+      const response = await api.get(`/api/v1/incidents?${params.toString()}`)
+      setIncidents(response.data.items)
+      setTotalPages(response.data.pages)
+      setTotalItems(response.data.total)
     } catch (error) {
       console.error('Failed to fetch incidents:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, filters, searchQuery])
+
+  useEffect(() => {
+    fetchIncidents()
+  }, [fetchIncidents])
 
   const handleCreateIncident = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,54 +97,23 @@ export default function IncidentsPage() {
     }
   }
 
-  // Filter and search incidents
-  const filteredIncidents = useMemo(() => {
-    let result = [...incidents]
-
-    // Apply search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(
-        incident =>
-          incident.title?.toLowerCase().includes(query) ||
-          incident.description?.toLowerCase().includes(query) ||
-          incident.service_name?.toLowerCase().includes(query)
-      )
-    }
-
-    // Apply severity filter
-    if (filters.severity.length > 0) {
-      result = result.filter(incident => filters.severity.includes(incident.severity))
-    }
-
-    // Apply state filter
-    if (filters.state.length > 0) {
-      result = result.filter(incident => filters.state.includes(incident.state))
-    }
-
-    // Apply service filter
-    if (filters.service) {
-      const serviceQuery = filters.service.toLowerCase()
-      result = result.filter(incident =>
-        incident.service_name?.toLowerCase().includes(serviceQuery)
-      )
-    }
-
-    return result
-  }, [incidents, searchQuery, filters])
-
-  // Pagination
-  const totalPages = Math.ceil(filteredIncidents.length / itemsPerPage)
-  const paginatedIncidents = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    const endIndex = startIndex + itemsPerPage
-    return filteredIncidents.slice(startIndex, endIndex)
-  }, [filteredIncidents, currentPage])
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
+  // Handle filter changes - reset to page 1
+  const handleFilterChange = (newFilters: FilterState) => {
+    setFilters(newFilters)
     setCurrentPage(1)
-  }, [searchQuery, filters])
+  }
+
+  // Handle search changes - reset to page 1
+  const handleSearch = (query: string) => {
+    setSearchQuery(query)
+    setCurrentPage(1)
+  }
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
     <div className="px-4 sm:px-0">
@@ -136,7 +138,7 @@ export default function IncidentsPage() {
         </div>
         <div className="flex space-x-3">
           <ExportButton
-            data={filteredIncidents}
+            data={incidents}
             filename={`incidents-${new Date().toISOString().split('T')[0]}`}
           />
           <button
@@ -210,26 +212,27 @@ export default function IncidentsPage() {
 
       {/* Filters */}
       <IncidentFilters
-        onFilterChange={setFilters}
-        onSearch={setSearchQuery}
+        onFilterChange={handleFilterChange}
+        onSearch={handleSearch}
       />
 
       {/* Results Summary */}
       <div className="mb-4 text-sm text-gray-600">
-        Showing {filteredIncidents.length} of {incidents.length} incidents
+        Showing {incidents.length} of {totalItems.toLocaleString()} incidents
+        {(searchQuery || filters.severity.length > 0 || filters.state.length > 0) && ' (filtered)'}
       </div>
 
       <div className="bg-white shadow rounded-lg p-6">
         {loading ? (
-          <ListSkeleton count={5} />
-        ) : filteredIncidents.length === 0 ? (
+          <ListSkeleton count={10} />
+        ) : incidents.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             No incidents found matching your criteria.
           </div>
         ) : (
           <>
             <div className="space-y-4">
-              {paginatedIncidents.map((incident) => (
+              {incidents.map((incident) => (
                 <div
                   key={incident.id}
                   className="border rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -282,9 +285,9 @@ export default function IncidentsPage() {
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
-                totalItems={filteredIncidents.length}
+                totalItems={totalItems}
                 itemsPerPage={itemsPerPage}
-                onPageChange={setCurrentPage}
+                onPageChange={handlePageChange}
               />
             )}
           </>
