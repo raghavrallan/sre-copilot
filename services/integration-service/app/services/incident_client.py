@@ -2,10 +2,11 @@
 Client for incident-service API
 """
 import httpx
+import os
 from typing import Optional
 
 
-INCIDENT_SERVICE_URL = "http://incident-service:8002"
+INCIDENT_SERVICE_URL = os.getenv("INCIDENT_SERVICE_URL", "http://incident-service:8002")
 
 
 class IncidentClient:

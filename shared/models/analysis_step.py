@@ -4,6 +4,11 @@ Analysis Step model for tracking incident analysis workflow
 from django.db import models
 from django.utils import timezone
 import uuid
+import os
+
+# Pricing Configuration from environment (per 1M tokens)
+AI_INPUT_TOKEN_PRICE = float(os.getenv("AI_INPUT_TOKEN_PRICE", "0.150"))
+AI_OUTPUT_TOKEN_PRICE = float(os.getenv("AI_OUTPUT_TOKEN_PRICE", "0.600"))
 
 
 class AnalysisStepType(models.TextChoices):
@@ -35,7 +40,7 @@ class AnalysisStep(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     incident = models.ForeignKey(
-        'incident.Incident',
+        'shared.Incident',
         on_delete=models.CASCADE,
         related_name='analysis_steps'
     )
@@ -149,10 +154,10 @@ class AnalysisStep(models.Model):
         self.save()
 
     def calculate_cost(self):
-        """Calculate cost based on token usage"""
+        """Calculate cost based on token usage using env pricing"""
         if self.input_tokens and self.output_tokens:
-            input_cost = (self.input_tokens / 1_000_000) * 0.150
-            output_cost = (self.output_tokens / 1_000_000) * 0.600
+            input_cost = (self.input_tokens / 1_000_000) * AI_INPUT_TOKEN_PRICE
+            output_cost = (self.output_tokens / 1_000_000) * AI_OUTPUT_TOKEN_PRICE
             self.cost_usd = input_cost + output_cost
             self.total_tokens = self.input_tokens + self.output_tokens
             self.save()

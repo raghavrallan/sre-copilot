@@ -18,8 +18,9 @@ from app.services.incident_client import IncidentClient
 router = APIRouter()
 incident_client = IncidentClient()
 
-# Default project ID for legacy webhooks (backwards compatibility)
-DEFAULT_PROJECT_ID = "af98d006-d24f-4e57-be34-4e2d3b1c2a61"
+# Legacy webhooks are deprecated - all webhooks should use integration-based routing
+# If legacy endpoint is hit, we'll return an error directing users to proper setup
+LEGACY_WEBHOOK_DEPRECATED = True
 
 
 # ============================================================================
@@ -305,113 +306,61 @@ async def process_grafana_webhook(body: dict, integration_id: str, project_id: s
 @router.post("/webhooks/alertmanager")
 async def alertmanager_webhook_legacy(webhook: AlertManagerWebhook):
     """
-    LEGACY: Receive alerts from Prometheus AlertManager (backwards compatible)
+    DEPRECATED: This legacy endpoint is no longer supported.
 
-    This endpoint uses the hardcoded DEFAULT_PROJECT_ID for backwards compatibility.
-    New integrations should use /webhooks/prometheus/{integration_id} instead.
+    Please configure your AlertManager to use the proper webhook URL:
+    /webhooks/alertmanager/{integration_id}
+
+    To get your integration_id:
+    1. Login to SRE Copilot
+    2. Go to Project Settings > Integrations
+    3. Add AlertManager integration
+    4. Copy the generated webhook URL
     """
-    print("⚠️  WARNING: Using legacy AlertManager webhook endpoint with hardcoded project_id")
-    print("    Please migrate to /webhooks/prometheus/{integration_id} for proper project routing")
-
-    created_incidents = []
-
-    # Process each alert
-    for alert in webhook.alerts:
-        # Only create incidents for firing alerts
-        if alert.status != "firing":
-            print(f"Skipping resolved alert: {alert.labels.alertname}")
-            continue
-
-        # Extract alert details
-        alertname = alert.labels.alertname
-        severity = alert.labels.severity
-        service = alert.labels.service or "unknown"
-        summary = alert.annotations.summary
-        description = alert.annotations.description or ""
-
-        # Create incident
-        title = f"[{severity.upper()}] {alertname} on {service}"
-        full_description = f"{summary}\n\n{description}"
-
-        if alert.generatorURL:
-            full_description += f"\n\nPrometheus: {alert.generatorURL}"
-
-        print(f"Creating incident for alert: {alertname} ({severity})")
-
-        incident = await incident_client.create_incident(
-            title=title,
-            description=full_description,
-            service_name=service,
-            severity=map_severity(severity),
-            project_id=DEFAULT_PROJECT_ID
-        )
-
-        if incident:
-            created_incidents.append(incident["id"])
-            print(f"✅ Created incident {incident['id']} for alert {alertname}")
-        else:
-            print(f"❌ Failed to create incident for alert {alertname}")
-
-    return {
-        "status": "success",
-        "message": f"Processed {len(webhook.alerts)} alerts, created {len(created_incidents)} incidents",
-        "incident_ids": created_incidents
-    }
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "DEPRECATED_ENDPOINT",
+            "message": "Legacy webhook endpoint is deprecated. Please use integration-specific webhook URL.",
+            "migration_steps": [
+                "1. Login to SRE Copilot",
+                "2. Go to Project Settings > Integrations",
+                "3. Add AlertManager integration",
+                "4. Copy the generated webhook URL: /webhooks/alertmanager/{integration_id}",
+                "5. Update your AlertManager configuration with the new webhook URL"
+            ]
+        }
+    )
 
 
 @router.post("/webhooks/grafana")
 async def grafana_webhook_legacy(webhook: GrafanaWebhook):
     """
-    LEGACY: Receive alerts from Grafana (backwards compatible)
+    DEPRECATED: This legacy endpoint is no longer supported.
 
-    This endpoint uses the hardcoded DEFAULT_PROJECT_ID for backwards compatibility.
-    New integrations should use /webhooks/grafana/{integration_id} instead.
+    Please configure your Grafana to use the proper webhook URL:
+    /webhooks/grafana/{integration_id}
+
+    To get your integration_id:
+    1. Login to SRE Copilot
+    2. Go to Project Settings > Integrations
+    3. Add Grafana integration
+    4. Copy the generated webhook URL
     """
-    print("⚠️  WARNING: Using legacy Grafana webhook endpoint with hardcoded project_id")
-    print("    Please migrate to /webhooks/grafana/{integration_id} for proper project routing")
-
-    created_incidents = []
-
-    # Process each alert
-    for alert in webhook.alerts:
-        # Only create incidents for alerting state
-        if alert.state != "alerting":
-            print(f"Skipping non-alerting alert: {alert.title}")
-            continue
-
-        # Extract alert details
-        title = f"[GRAFANA] {alert.title}"
-        description = alert.message or webhook.message or "No description provided"
-
-        # Add dashboard link if available
-        if webhook.dashboardId and webhook.panelId:
-            dashboard_url = f"http://grafana:3000/d/{webhook.dashboardId}?panelId={webhook.panelId}"
-            description += f"\n\nGrafana Dashboard: {dashboard_url}"
-
-        print(f"Creating incident for Grafana alert: {alert.title}")
-
-        # Grafana doesn't always provide service info, use default
-        service_name = "grafana-monitored-service"
-
-        incident = await incident_client.create_incident(
-            title=title,
-            description=description,
-            service_name=service_name,
-            severity="medium",  # Grafana doesn't provide severity, use medium as default
-            project_id=DEFAULT_PROJECT_ID
-        )
-
-        if incident:
-            created_incidents.append(incident["id"])
-            print(f"✅ Created incident {incident['id']} for Grafana alert {alert.title}")
-        else:
-            print(f"❌ Failed to create incident for Grafana alert {alert.title}")
-
-    return {
-        "status": "success",
-        "message": f"Processed {len(webhook.alerts)} alerts, created {len(created_incidents)} incidents",
-        "incident_ids": created_incidents
-    }
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "DEPRECATED_ENDPOINT",
+            "message": "Legacy webhook endpoint is deprecated. Please use integration-specific webhook URL.",
+            "migration_steps": [
+                "1. Login to SRE Copilot",
+                "2. Go to Project Settings > Integrations",
+                "3. Add Grafana integration",
+                "4. Copy the generated webhook URL: /webhooks/grafana/{integration_id}",
+                "5. Update your Grafana notification channel with the new webhook URL"
+            ]
+        }
+    )
 
 
 @router.post("/webhooks/test")

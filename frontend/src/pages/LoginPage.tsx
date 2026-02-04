@@ -24,6 +24,10 @@ export default function LoginPage() {
       })
 
       const { access_token, user, projects } = response.data
+
+      // Store access_token in cookie for WebSocket authentication
+      document.cookie = `access_token=${access_token}; path=/; SameSite=Lax`
+
       login(access_token, user, projects || [])
       navigate('/')
     } catch (err: any) {

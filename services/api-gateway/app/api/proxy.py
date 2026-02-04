@@ -192,17 +192,34 @@ async def get_websocket_token(request: Request):
         return backend_response.json()
 
 
+# Helper function to get token from header or cookie
+def get_token_from_request(request: Request, authorization: Optional[str] = None) -> Optional[str]:
+    """Extract token from Authorization header or cookie"""
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+    if not token:
+        token = request.cookies.get("access_token")
+    return token
+
+
 # Project management endpoints
 @router.get("/projects")
-async def list_projects(authorization: Optional[str] = Header(None)):
+async def list_projects(
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
     """Proxy to auth service - list projects"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AUTH_SERVICE_URL}/projects",
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -216,7 +233,8 @@ async def create_project(
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - create project"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
@@ -225,7 +243,7 @@ async def create_project(
         response = await client.post(
             f"{settings.AUTH_SERVICE_URL}/projects",
             json=body,
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -236,16 +254,18 @@ async def create_project(
 @router.get("/projects/{project_id}")
 async def get_project(
     project_id: str,
+    request: Request,
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - get project"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}",
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -260,7 +280,8 @@ async def update_project(
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - update project"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
@@ -269,7 +290,7 @@ async def update_project(
         response = await client.patch(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}",
             json=body,
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -280,16 +301,18 @@ async def update_project(
 @router.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,
+    request: Request,
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - delete project"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.delete(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}",
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -300,16 +323,18 @@ async def delete_project(
 @router.get("/projects/{project_id}/members")
 async def list_project_members(
     project_id: str,
+    request: Request,
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - list project members"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/members",
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -324,7 +349,8 @@ async def add_project_member(
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - add project member"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
@@ -333,7 +359,7 @@ async def add_project_member(
         response = await client.post(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/members",
             json=body,
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -349,7 +375,8 @@ async def update_member_role(
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - update member role"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
@@ -358,7 +385,7 @@ async def update_member_role(
         response = await client.patch(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/members/{user_id}",
             json=body,
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -370,16 +397,18 @@ async def update_member_role(
 async def remove_project_member(
     project_id: str,
     user_id: str,
+    request: Request,
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - remove project member"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.delete(
             f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/members/{user_id}",
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')

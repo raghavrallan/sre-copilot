@@ -19,6 +19,7 @@ services:
       - prometheus-data:/prometheus
     networks:
       - monitoring
+      - sre-copilot_sre-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
@@ -66,28 +67,12 @@ services:
       - grafana-data:/var/lib/grafana
     networks:
       - monitoring
+      - sre-copilot_sre-network
     depends_on:
       - prometheus
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Dummy Application - Metrics Generator
-  dummy-app:
-    build:
-      context: ./dummy-app
-      dockerfile: Dockerfile
-    container_name: sre-dummy-app
-    ports:
-      - "8080:8080"
-    networks:
-      - monitoring
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

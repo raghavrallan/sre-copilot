@@ -6,10 +6,15 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 from asgiref.sync import sync_to_async
+import os
 
 from shared.models.incident import Incident
 from shared.models.analysis_step import AnalysisStep
 from shared.models.ai_request import AIRequest
+
+# Pricing Configuration from environment (per 1M tokens)
+AI_INPUT_TOKEN_PRICE = float(os.getenv("AI_INPUT_TOKEN_PRICE", "0.150"))
+AI_OUTPUT_TOKEN_PRICE = float(os.getenv("AI_OUTPUT_TOKEN_PRICE", "0.600"))
 
 router = APIRouter()
 
@@ -39,24 +44,29 @@ async def get_incident_workflow(
 
         # Get all analysis steps for this incident
         steps = []
-        for step in AnalysisStep.objects.filter(incident=incident).order_by('step_number'):
-            step_data = {
-                "id": str(step.id),
-                "step_type": step.step_type,
-                "step_type_display": step.get_step_type_display(),
-                "step_number": step.step_number,
-                "status": step.status,
-                "status_display": step.get_status_display(),
-                "input_tokens": step.input_tokens,
-                "output_tokens": step.output_tokens,
-                "total_tokens": step.total_tokens,
-                "cost_usd": float(step.cost_usd) if step.cost_usd else None,
-                "duration_ms": step.duration_ms,
-                "started_at": step.started_at.isoformat() if step.started_at else None,
-                "completed_at": step.completed_at.isoformat() if step.completed_at else None,
-                "error_message": step.error_message if step.error_message else None
-            }
-            steps.append(step_data)
+        try:
+            for step in AnalysisStep.objects.filter(incident_id=incident_id).order_by('step_number'):
+                step_data = {
+                    "id": str(step.id),
+                    "step_type": step.step_type,
+                    "step_type_display": step.get_step_type_display(),
+                    "step_number": step.step_number,
+                    "status": step.status,
+                    "status_display": step.get_status_display(),
+                    "input_tokens": step.input_tokens,
+                    "output_tokens": step.output_tokens,
+                    "total_tokens": step.total_tokens,
+                    "cost_usd": float(step.cost_usd) if step.cost_usd else None,
+                    "duration_ms": step.duration_ms,
+                    "started_at": step.started_at.isoformat() if step.started_at else None,
+                    "completed_at": step.completed_at.isoformat() if step.completed_at else None,
+                    "error_message": step.error_message if step.error_message else None
+                }
+                steps.append(step_data)
+        except Exception as e:
+            print(f"Error fetching analysis steps: {e}")
+            # Return empty steps if there's an issue
+            steps = []
 
         # Calculate workflow summary
         total_steps = len(steps)
@@ -112,7 +122,7 @@ async def get_incident_metrics(
         total_input_tokens = 0
         total_output_tokens = 0
 
-        for request in AIRequest.objects.filter(incident=incident).order_by('created_at'):
+        for request in AIRequest.objects.filter(incident_id=incident_id).order_by('created_at'):
             request_data = {
                 "id": str(request.id),
                 "request_type": request.request_type,
@@ -133,7 +143,7 @@ async def get_incident_metrics(
             total_output_tokens += request.output_tokens
 
         # Get analysis steps summary
-        analysis_steps_count = AnalysisStep.objects.filter(incident=incident).count()
+        analysis_steps_count = AnalysisStep.objects.filter(incident_id=incident_id).count()
 
         return {
             "incident_id": incident_id,
@@ -148,8 +158,8 @@ async def get_incident_metrics(
             },
             "ai_requests": ai_requests,
             "cost_breakdown": {
-                "input_cost_usd": (total_input_tokens / 1_000_000) * 0.150,
-                "output_cost_usd": (total_output_tokens / 1_000_000) * 0.600,
+                "input_cost_usd": (total_input_tokens / 1_000_000) * AI_INPUT_TOKEN_PRICE,
+                "output_cost_usd": (total_output_tokens / 1_000_000) * AI_OUTPUT_TOKEN_PRICE,
                 "total_cost_usd": total_cost
             }
         }

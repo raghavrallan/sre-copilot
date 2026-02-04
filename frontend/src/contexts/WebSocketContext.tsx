@@ -61,8 +61,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     try {
       setConnectionStatus('connecting')
 
-      // Fetch WebSocket token using httpOnly cookie
-      const tokenResponse = await fetch('http://localhost:8000/api/v1/auth/ws-token', {
+      // Fetch WebSocket token using cookie (cookie set during login)
+      const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:8080'
+      const tokenResponse = await fetch(`${apiUrl}/api/v1/auth/ws-token`, {
         credentials: 'include'
       })
 

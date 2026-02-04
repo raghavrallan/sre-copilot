@@ -8,16 +8,18 @@ from datetime import datetime
 from django.utils import timezone
 import httpx
 import uuid
+import os
 
 from shared.models.incident import Incident, Hypothesis, IncidentState, IncidentSeverity
 from shared.models.tenant import Tenant
 from shared.models.project import Project
+from shared.models.analysis_step import AnalysisStep, AnalysisStepType, AnalysisStepStatus
 from app.services.redis_publisher import redis_publisher
 
 router = APIRouter()
 
-# AI Service URL (from environment)
-AI_SERVICE_URL = "http://ai-service:8003"
+# Service URLs from environment
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:8003")
 
 
 class CreateIncidentRequest(BaseModel):
@@ -126,14 +128,14 @@ async def list_incidents(
 
 @router.post("/incidents", response_model=IncidentResponse)
 async def create_incident(request: CreateIncidentRequest):
-    """Create a new incident and generate hypotheses"""
+    """Create a new incident and start full analysis workflow"""
     # Verify project exists
     try:
         project = await Project.objects.select_related('tenant').aget(id=request.project_id)
     except Project.DoesNotExist:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Create incident
+    # Create incident with investigating state (ticket-like workflow)
     incident = await Incident.objects.acreate(
         tenant=project.tenant,
         project=project,
@@ -141,9 +143,33 @@ async def create_incident(request: CreateIncidentRequest):
         description=request.description,
         service_name=request.service_name,
         severity=request.severity,
-        state=IncidentState.DETECTED,
+        state=IncidentState.INVESTIGATING,  # Start in investigating state
         detected_at=timezone.now()
     )
+
+    # Create analysis workflow steps
+    workflow_steps = [
+        (AnalysisStepType.ALERT_RECEIVED, 1, AnalysisStepStatus.COMPLETED),
+        (AnalysisStepType.SOURCE_IDENTIFIED, 2, AnalysisStepStatus.COMPLETED),
+        (AnalysisStepType.PLATFORM_DETAILS, 3, AnalysisStepStatus.COMPLETED),
+        (AnalysisStepType.LOGS_FETCHED, 4, AnalysisStepStatus.IN_PROGRESS),
+        (AnalysisStepType.HYPOTHESIS_GENERATED, 5, AnalysisStepStatus.PENDING),
+    ]
+
+    for step_type, step_number, status in workflow_steps:
+        await AnalysisStep.objects.acreate(
+            incident_id=str(incident.id),
+            step_type=step_type,
+            step_number=step_number,
+            status=status,
+            started_at=timezone.now() if status != AnalysisStepStatus.PENDING else None,
+            completed_at=timezone.now() if status == AnalysisStepStatus.COMPLETED else None,
+            input_data={
+                "title": incident.title,
+                "service_name": incident.service_name,
+                "severity": incident.severity
+            }
+        )
 
     # Trigger AI hypothesis generation (async, don't wait)
     try:

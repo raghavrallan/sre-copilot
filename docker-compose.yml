@@ -1,26 +1,26 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: sre-copilot-postgres
-    environment:
-      POSTGRES_DB: sre_copilot
-      POSTGRES_USER: sre_user
-      POSTGRES_PASSWORD: sre_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - sre-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sre_user -d sre_copilot"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # PostgreSQL Database (commented out - using external database from .env)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: sre-copilot-postgres
+  #   environment:
+  #     POSTGRES_DB: ${POSTGRES_DB}
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+  #   networks:
+  #     - sre-network
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   # Redis Cache & Queue
   redis:
@@ -45,18 +45,21 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-api-gateway
     environment:
-      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
-      - REDIS_URL=redis://redis:6379/0
-      - AUTH_SERVICE_URL=http://auth-service:8001
-      - INCIDENT_SERVICE_URL=http://incident-service:8002
-      - AI_SERVICE_URL=http://ai-service:8003
-      - INTEGRATION_SERVICE_URL=http://integration-service:8004
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - INCIDENT_SERVICE_URL=${INCIDENT_SERVICE_URL}
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
+      - INTEGRATION_SERVICE_URL=${INTEGRATION_SERVICE_URL}
       - ENVIRONMENT=development
     ports:
-      - "8000:8000"
+      - "8080:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -73,17 +76,20 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-auth-service
     environment:
-      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
-      - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET_KEY=your-secret-key-change-in-production
-      - JWT_ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
       - MONITORING_ENCRYPTION_KEY=${MONITORING_ENCRYPTION_KEY}
     ports:
       - "8001:8001"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -100,14 +106,19 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-incident-service
     environment:
-      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
-      - REDIS_URL=redis://redis:6379/0
-      - AI_SERVICE_URL=http://ai-service:8003
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
+      - AI_INPUT_TOKEN_PRICE=${AI_INPUT_TOKEN_PRICE:-0.150}
+      - AI_OUTPUT_TOKEN_PRICE=${AI_OUTPUT_TOKEN_PRICE:-0.600}
     ports:
       - "8002:8002"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -124,11 +135,19 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-ai-service
     environment:
-      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
-      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-sre-copilot-deployment-002}
-      - AZURE_OPENAI_MODEL=${AZURE_OPENAI_MODEL:-gpt-4o-mini}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
+      - AZURE_OPENAI_MODEL=${AZURE_OPENAI_MODEL}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}
+      - AI_INPUT_TOKEN_PRICE=${AI_INPUT_TOKEN_PRICE:-0.150}
+      - AI_OUTPUT_TOKEN_PRICE=${AI_OUTPUT_TOKEN_PRICE:-0.600}
     ports:
       - "8003:8003"
     depends_on:
@@ -148,14 +167,18 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-integration-service
     environment:
-      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
       - MONITORING_ENCRYPTION_KEY=${MONITORING_ENCRYPTION_KEY}
+      - INCIDENT_SERVICE_URL=${INCIDENT_SERVICE_URL}
     ports:
       - "8004:8004"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -172,7 +195,7 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-websocket-service
     environment:
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
     ports:
@@ -193,13 +216,16 @@ services:
       dockerfile: Dockerfile
     container_name: sre-copilot-audit-service
     environment:
-      - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
     ports:
       - "8008:8008"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -216,7 +242,8 @@ services:
       target: development
     container_name: sre-copilot-frontend
     environment:
-      - VITE_API_GATEWAY_URL=http://localhost:8000
+      - VITE_API_GATEWAY_URL=${VITE_API_GATEWAY_URL}
+      - VITE_WEBSOCKET_URL=${VITE_WEBSOCKET_URL}
     ports:
       - "5173:5173"
     depends_on:
@@ -229,7 +256,7 @@ services:
     command: npm run dev -- --host 0.0.0.0
 
 volumes:
-  postgres_data:
+  # postgres_data:  # Commented out - using external database
   redis_data:
 
 networks:
