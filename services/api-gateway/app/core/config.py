@@ -15,11 +15,15 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
         "http://frontend:5173"
     ]
 
-    # Database
-    DATABASE_URL: str = "postgresql://sre_user:sre_password@postgres:5432/sre_copilot"
+    # Database (uses environment variable from docker-compose)
+    DATABASE_URL: str = "postgresql://srecopilot:password@localhost:5432/srecopilot"
 
     # Redis
     REDIS_URL: str = "redis://redis:6379/0"

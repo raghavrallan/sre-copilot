@@ -10,23 +10,44 @@ import {
 
 interface Props {
   integration: MonitoringIntegration | null;
+  defaultType?: 'prometheus' | 'grafana' | 'alertmanager' | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 type AuthType = 'none' | 'basic' | 'apikey';
+type IntegrationType = 'prometheus' | 'grafana' | 'alertmanager';
 
-export default function MonitoringIntegrationForm({ integration, onClose, onSuccess }: Props) {
+const DEFAULT_URLS: Record<IntegrationType, string> = {
+  prometheus: 'http://localhost:9090',
+  grafana: 'http://localhost:3000',
+  alertmanager: 'http://localhost:9093',
+};
+
+const DEFAULT_NAMES: Record<IntegrationType, string> = {
+  prometheus: 'Local Prometheus',
+  grafana: 'Local Grafana',
+  alertmanager: 'Local AlertManager',
+};
+
+const DEFAULT_DESCRIPTIONS: Record<IntegrationType, string> = {
+  prometheus: 'Prometheus metrics server for collecting and querying metrics',
+  grafana: 'Grafana dashboards for visualization and monitoring',
+  alertmanager: 'AlertManager for alert routing and notifications',
+};
+
+export default function MonitoringIntegrationForm({ integration, defaultType, onClose, onSuccess }: Props) {
   const { user } = useAuthStore();
   const isEdit = !!integration;
 
+  // Determine initial type
+  const initialType: IntegrationType = integration?.integration_type || defaultType || 'prometheus';
+
   // Form state
-  const [integrationType, setIntegrationType] = useState<'prometheus' | 'grafana' | 'alertmanager'>(
-    integration?.integration_type || 'prometheus'
-  );
-  const [name, setName] = useState(integration?.name || '');
-  const [description, setDescription] = useState(integration?.description || '');
-  const [url, setUrl] = useState(integration?.url || '');
+  const [integrationType, setIntegrationType] = useState<IntegrationType>(initialType);
+  const [name, setName] = useState(integration?.name || (defaultType ? DEFAULT_NAMES[defaultType] : ''));
+  const [description, setDescription] = useState(integration?.description || (defaultType ? DEFAULT_DESCRIPTIONS[defaultType] : ''));
+  const [url, setUrl] = useState(integration?.url || (defaultType ? DEFAULT_URLS[defaultType] : ''));
   const [authType, setAuthType] = useState<AuthType>('none');
   const [username, setUsername] = useState(integration?.username || '');
   const [password, setPassword] = useState('');
@@ -120,10 +141,25 @@ export default function MonitoringIntegrationForm({ integration, onClose, onSucc
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
       <div className="bg-white bg-white rounded-lg max-w-2xl w-full mx-4 my-8">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900 text-gray-900">
-            {isEdit ? 'Edit Integration' : 'Add Monitoring Integration'}
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {isEdit
+              ? `Edit ${integrationType.charAt(0).toUpperCase() + integrationType.slice(1)} Integration`
+              : defaultType
+                ? `Connect ${defaultType.charAt(0).toUpperCase() + defaultType.slice(1)}`
+                : 'Add Monitoring Integration'
+            }
           </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            {isEdit
+              ? 'Update the integration configuration below'
+              : integrationType === 'prometheus'
+                ? 'Connect to your Prometheus server for metrics collection and alerting'
+                : integrationType === 'grafana'
+                  ? 'Connect to your Grafana instance for dashboards and visualization'
+                  : 'Connect to AlertManager for alert routing and notifications'
+            }
+          </p>
         </div>
 
         {/* Form */}

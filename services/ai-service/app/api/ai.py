@@ -8,6 +8,7 @@ import os
 import json
 import time
 import redis
+from asgiref.sync import sync_to_async
 
 from shared.models.incident import Incident, Hypothesis
 from shared.models.ai_request import AIRequest
@@ -16,10 +17,17 @@ from app.services.redis_publisher import redis_publisher
 
 router = APIRouter()
 
-# Check if we have Azure OpenAI credentials
+# Azure OpenAI Configuration from environment
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "sre-copilot-deployment-002")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+AZURE_OPENAI_MODEL = os.getenv("AZURE_OPENAI_MODEL", "gpt-4o-mini")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
+
+# Pricing Configuration from environment (per 1M tokens)
+AI_INPUT_TOKEN_PRICE = float(os.getenv("AI_INPUT_TOKEN_PRICE", "0.150"))
+AI_OUTPUT_TOKEN_PRICE = float(os.getenv("AI_OUTPUT_TOKEN_PRICE", "0.600"))
+
 USE_MOCK = not AZURE_OPENAI_API_KEY or AZURE_OPENAI_API_KEY == ""
 
 # Redis client for caching
@@ -83,13 +91,14 @@ async def generate_hypotheses_real(title: str, description: str, service_name: s
         print(f"🤖 Initializing Azure OpenAI client...")
         print(f"   Endpoint: {AZURE_OPENAI_ENDPOINT}")
         print(f"   Deployment: {AZURE_OPENAI_DEPLOYMENT}")
-        print(f"   Model: gpt-4o-mini")
+        print(f"   Model: {AZURE_OPENAI_MODEL}")
+        print(f"   API Version: {AZURE_OPENAI_API_VERSION}")
         print(f"   API Key: {'*' * 20}{AZURE_OPENAI_API_KEY[-4:] if AZURE_OPENAI_API_KEY else 'NOT SET'}")
 
         # Initialize Azure OpenAI client
         client = AsyncAzureOpenAI(
             api_key=AZURE_OPENAI_API_KEY,
-            api_version="2024-08-01-preview",  # Use stable API version
+            api_version=AZURE_OPENAI_API_VERSION,
             azure_endpoint=AZURE_OPENAI_ENDPOINT
         )
 
@@ -140,13 +149,25 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
             print("❌ Empty response from Azure OpenAI")
             raise ValueError("Empty response from Azure OpenAI")
 
+        # Clean markdown formatting from response (```json ... ```)
+        cleaned_content = content.strip()
+        if cleaned_content.startswith("```"):
+            # Remove opening code block
+            lines = cleaned_content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            # Remove closing code block
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned_content = "\n".join(lines)
+
         # Try to parse JSON
         try:
-            result = json.loads(content)
+            result = json.loads(cleaned_content)
             print(f"✅ Successfully parsed JSON response")
         except json.JSONDecodeError as je:
             print(f"❌ JSON parse error: {je}")
-            print(f"   Content: {content}")
+            print(f"   Content: {cleaned_content}")
             raise
 
         hypotheses_data = result.get("hypotheses", [])
@@ -241,20 +262,26 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
     # Set lock with 60 second TTL
     redis_client.setex(lock_key, 60, "1")
 
+    analysis_step = None
     try:
-        # Create analysis step for tracking
-        analysis_step = await AnalysisStep.objects.acreate(
-            incident=incident,
-            step_type=AnalysisStepType.HYPOTHESIS_GENERATED,
-            step_number=5,
-            status=AnalysisStepStatus.IN_PROGRESS,
-            input_data={
-                "title": request.title,
-                "description": request.description,
-                "service_name": request.service_name
-            }
-        )
-        analysis_step.start()
+        # Create analysis step for tracking (using incident_id instead of incident object)
+        try:
+            analysis_step = await AnalysisStep.objects.acreate(
+                incident_id=request.incident_id,
+                step_type=AnalysisStepType.HYPOTHESIS_GENERATED,
+                step_number=5,
+                status=AnalysisStepStatus.IN_PROGRESS,
+                input_data={
+                    "title": request.title,
+                    "description": request.description,
+                    "service_name": request.service_name
+                }
+            )
+            # Use sync_to_async for the start() method which calls save()
+            await sync_to_async(analysis_step.start)()
+        except Exception as e:
+            print(f"Warning: Could not create analysis step: {e}")
+            analysis_step = None
 
         # Generate hypotheses
         if USE_MOCK:
@@ -288,7 +315,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
         saved_hypotheses = []
         for rank, candidate in enumerate(candidates, 1):
             hypothesis = await Hypothesis.objects.acreate(
-                incident=incident,
+                incident_id=request.incident_id,
                 claim=candidate.claim,
                 description=candidate.description,
                 confidence_score=candidate.confidence_score,
@@ -307,7 +334,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
                 await redis_publisher.publish_hypothesis_generated(
                     hypothesis_data={
                         "id": str(hypothesis.id),
-                        "incident_id": str(incident.id),
+                        "incident_id": request.incident_id,
                         "claim": hypothesis.claim,
                         "description": hypothesis.description,
                         "confidence_score": hypothesis.confidence_score,
@@ -322,7 +349,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
         # OPTIMIZATION 3: Track token usage and cost
         if not USE_MOCK:
             ai_request = await AIRequest.objects.acreate(
-                incident=incident,
+                incident_id=request.incident_id,
                 request_type="hypothesis",
                 input_tokens=usage["input_tokens"],
                 output_tokens=usage["output_tokens"],
@@ -333,17 +360,19 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
             )
             print(f"💰 Token usage: {usage['input_tokens']} input + {usage['output_tokens']} output = {usage['total_tokens']} total")
 
-            # Update analysis step with token info
-            analysis_step.input_tokens = usage["input_tokens"]
-            analysis_step.output_tokens = usage["output_tokens"]
-            analysis_step.total_tokens = usage["total_tokens"]
-            analysis_step.calculate_cost()
+            # Update analysis step with token info (if enabled)
+            if analysis_step:
+                analysis_step.input_tokens = usage["input_tokens"]
+                analysis_step.output_tokens = usage["output_tokens"]
+                analysis_step.total_tokens = usage["total_tokens"]
+                await sync_to_async(analysis_step.calculate_cost)()
 
-        # Mark analysis step as complete
-        analysis_step.complete(output_data={
-            "hypotheses_count": len(saved_hypotheses),
-            "using_mock": USE_MOCK
-        })
+        # Mark analysis step as complete (if enabled)
+        if analysis_step:
+            await sync_to_async(analysis_step.complete)(output_data={
+                "hypotheses_count": len(saved_hypotheses),
+                "using_mock": USE_MOCK
+            })
 
         # Cache the result in Redis for 24 hours
         cache_key = f"hypothesis:{request.incident_id}"
@@ -571,7 +600,8 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
         # )
 
         print(f"💰 Batch token usage: {usage['input_tokens']} input + {usage['output_tokens']} output = {usage['total_tokens']} total")
-        print(f"📊 Cost per incident: ${(usage['input_tokens']*0.150/1000000 + usage['output_tokens']*0.600/1000000) / len(incidents_to_process):.6f}")
+        cost_per_incident = (usage['input_tokens']*AI_INPUT_TOKEN_PRICE/1000000 + usage['output_tokens']*AI_OUTPUT_TOKEN_PRICE/1000000) / len(incidents_to_process)
+        print(f"📊 Cost per incident: ${cost_per_incident:.6f}")
 
         return {
             "batch_size": len(incidents),
@@ -580,7 +610,7 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
             "results": results + cached_results,
             "using_mock": False,
             "batch_token_usage": usage,
-            "cost_per_incident": (usage["input_tokens"]*0.150/1000000 + usage["output_tokens"]*0.600/1000000) / len(incidents_to_process)
+            "cost_per_incident": cost_per_incident
         }
 
     except Exception as e:

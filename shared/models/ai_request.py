@@ -4,6 +4,12 @@ AI Request model for tracking AI service usage, token consumption, and costs
 from django.db import models
 from django.utils import timezone
 import uuid
+import os
+
+# Pricing Configuration from environment (per 1M tokens)
+AI_INPUT_TOKEN_PRICE = float(os.getenv("AI_INPUT_TOKEN_PRICE", "0.150"))
+AI_OUTPUT_TOKEN_PRICE = float(os.getenv("AI_OUTPUT_TOKEN_PRICE", "0.600"))
+AZURE_OPENAI_MODEL = os.getenv("AZURE_OPENAI_MODEL", "gpt-4o-mini")
 
 
 class AIRequest(models.Model):
@@ -12,7 +18,7 @@ class AIRequest(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     incident = models.ForeignKey(
-        'incident.Incident',
+        'shared.Incident',
         on_delete=models.CASCADE,
         related_name='ai_requests'
     )
@@ -43,7 +49,7 @@ class AIRequest(models.Model):
     # Model information
     model_used = models.CharField(
         max_length=50,
-        default="gpt-4o-mini",
+        default=AZURE_OPENAI_MODEL,
         help_text="AI model used for this request"
     )
 
@@ -82,13 +88,11 @@ class AIRequest(models.Model):
 
     def calculate_cost(self):
         """
-        Calculate cost based on token usage
-        GPT-4o-mini pricing:
-        - Input: $0.150 per 1M tokens
-        - Output: $0.600 per 1M tokens
+        Calculate cost based on token usage using env pricing
+        Pricing configured via AI_INPUT_TOKEN_PRICE and AI_OUTPUT_TOKEN_PRICE
         """
-        input_cost = (self.input_tokens / 1_000_000) * 0.150
-        output_cost = (self.output_tokens / 1_000_000) * 0.600
+        input_cost = (self.input_tokens / 1_000_000) * AI_INPUT_TOKEN_PRICE
+        output_cost = (self.output_tokens / 1_000_000) * AI_OUTPUT_TOKEN_PRICE
         self.cost_usd = input_cost + output_cost
         self.total_tokens = self.input_tokens + self.output_tokens
         return self.cost_usd

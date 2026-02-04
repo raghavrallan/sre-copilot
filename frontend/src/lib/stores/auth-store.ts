@@ -47,7 +47,14 @@ export const useAuthStore = create<AuthState>()(
         set({ user, isAuthenticated: true, projects, currentProject })
       },
       logout: () => {
-        set({ user: null, isAuthenticated: false, projects: [], currentProject: null })
+        // Clear state
+        set({ user: null, token: null, isAuthenticated: false, projects: [], currentProject: null })
+        // Clear localStorage
+        localStorage.removeItem('auth-storage')
+        // Clear all cookies
+        document.cookie.split(';').forEach((c) => {
+          document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/')
+        })
       },
       switchProject: (token: string, project: Project) => {
         // Update current project (token is managed by httpOnly cookies)

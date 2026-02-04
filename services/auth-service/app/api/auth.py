@@ -23,6 +23,20 @@ from app.core.security import (
 router = APIRouter()
 
 
+def get_token_from_request(authorization: Optional[str] = None, access_token: Optional[str] = None) -> Optional[str]:
+    """Extract token from Authorization header or cookie"""
+    token = None
+    # Try Authorization header first
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+    # Fall back to cookie
+    if not token and access_token:
+        token = access_token
+    return token
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
@@ -267,17 +281,14 @@ async def switch_project(
 
 
 @router.get("/verify")
-async def verify(authorization: Optional[str] = Header(None)):
-    """Verify JWT token"""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="No authorization header")
-
-    # Extract token
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-
-    token = parts[1]
+async def verify(
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Cookie(None)
+):
+    """Verify JWT token (supports both header and cookie)"""
+    token = get_token_from_request(authorization, access_token)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     # Verify token
     payload = verify_token(token)
@@ -288,17 +299,16 @@ async def verify(authorization: Optional[str] = Header(None)):
 
 
 @router.get("/me")
-async def get_current_user(authorization: Optional[str] = Header(None)):
-    """Get current user info with projects"""
-    if not authorization:
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Cookie(None)
+):
+    """Get current user info with projects (supports both header and cookie)"""
+    token = get_token_from_request(authorization, access_token)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Extract and verify token
-    parts = authorization.split()
-    if len(parts) != 2:
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-
-    token = parts[1]
+    # Verify token
     payload = verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
