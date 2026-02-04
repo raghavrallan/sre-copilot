@@ -97,52 +97,60 @@ See [Technology Choices](docs/tech-stack/technology-choices.md) for detailed rat
 ```
 sre-copilot/
 ├── README.md                          # This file
+├── FOLDER_STRUCTURE.md                # Detailed folder structure
 ├── docs/                              # All documentation
-│   ├── architecture/
-│   │   └── complete-architecture.md   # Full system architecture
+│   ├── architecture/                  # System architecture
+│   │   ├── system-architecture.md     # Full system architecture
+│   │   └── data-flow.md               # Data flow diagrams
+│   ├── api-specs/                     # API specifications
+│   │   ├── README.md                  # Complete API reference
+│   │   └── webhooks.md                # Webhook specifications
+│   ├── guides/                        # Developer guides
+│   │   ├── getting-started.md         # Quick start guide
+│   │   ├── testing.md                 # Testing guide
+│   │   └── security.md                # Security guide
 │   ├── features/
 │   │   └── phase-1-v1-features.md     # Phase 1 feature specifications
 │   ├── data-models/
 │   │   └── core-models.md             # Database schema
-│   ├── tech-stack/
-│   │   └── technology-choices.md      # Tech stack decisions
-│   └── api-specs/                     # API specifications (TBD)
+│   └── tech-stack/
+│       └── technology-choices.md      # Tech stack decisions
 │
-├── sprints/                           # Sprint planning
-│   ├── phase-1/
-│   │   ├── sprint-1-foundation.md     # Weeks 1-4
-│   │   ├── sprint-2-core-engine.md    # Weeks 5-8
-│   │   ├── sprint-3-features.md       # Weeks 9-12 (TBD)
-│   │   └── sprint-4-polish.md         # Weeks 13-16 (TBD)
-│   ├── phase-2/                       # Future
-│   └── phase-3/                       # Future
+├── services/                          # Microservices
+│   ├── api-gateway/                   # API Gateway (Port 8000)
+│   ├── auth-service/                  # Authentication (Port 8001)
+│   ├── incident-service/              # Incidents (Port 8002)
+│   ├── ai-service/                    # AI/ML (Port 8003)
+│   ├── integration-service/           # Webhooks (Port 8004)
+│   ├── websocket-service/             # Real-time (Port 8005)
+│   └── audit-service/                 # Audit logs (Port 8008)
 │
-├── backend/                           # Backend codebase (TBD)
-│   ├── app/
-│   │   ├── main.py                    # FastAPI app
-│   │   ├── api/                       # API routes
-│   │   ├── core/                      # Core logic
-│   │   ├── models/                    # Django ORM models
-│   │   ├── ai/                        # AI integration
-│   │   ├── ingestion/                 # Signal ingestion
-│   │   └── settings.py                # Django settings
-│   └── tests/
-│
-├── frontend/                          # Frontend codebase (TBD)
+├── frontend/                          # React + TypeScript (Port 5173)
 │   ├── src/
 │   │   ├── components/
 │   │   ├── pages/
 │   │   ├── hooks/
+│   │   ├── lib/
 │   │   └── services/
 │   └── public/
 │
-├── infra/                             # Infrastructure as Code (TBD)
-│   ├── terraform/
-│   ├── kubernetes/
-│   └── scripts/
+├── shared/                            # Shared code
+│   ├── models/                        # Django ORM models
+│   ├── migrations/                    # Database migrations
+│   └── config/                        # Shared configuration
 │
-└── diagrams/                          # Architecture diagrams
-    └── complete-architecture.md
+├── infra/                             # Infrastructure
+│   ├── terraform/                     # IaC
+│   └── kubernetes/                    # K8s manifests
+│
+├── tests/                             # Test suites
+│   ├── unit/                          # Unit tests
+│   └── integration/                   # Integration tests
+│
+├── diagrams/                          # Architecture diagrams
+│   └── complete-architecture.md
+│
+└── docker-compose.yml                 # Local development setup
 ```
 
 ---
@@ -206,25 +214,26 @@ docker-compose down
 
 ## Documentation
 
+### Getting Started
+- **[Getting Started Guide](docs/guides/getting-started.md)** - Quick start with Docker Compose
+- [Technology Choices](docs/tech-stack/technology-choices.md) - Tech stack rationale
+
 ### Architecture
-- [Complete System Architecture](diagrams/complete-architecture.md) - Detailed architecture with ingestion layer
-- Data Flow Diagrams (TBD)
-- Deployment Architecture (TBD)
+- [System Architecture](docs/architecture/system-architecture.md) - Complete system architecture
+- [Data Flow](docs/architecture/data-flow.md) - Data flow diagrams
+- [Architecture Diagrams](diagrams/complete-architecture.md) - ASCII diagrams
 
-### Features
-- [Phase 1 V1 Features](docs/features/phase-1-v1-features.md) - Complete Phase 1 feature specifications
+### API Reference
+- [API Specifications](docs/api-specs/README.md) - Complete REST API reference
+- [Webhook API](docs/api-specs/webhooks.md) - AlertManager/Prometheus webhooks
 
-### Data Models
-- [Core Data Models](docs/data-models/core-models.md) - Django ORM models and database schema
+### Features & Data
+- [Phase 1 Features](docs/features/phase-1-v1-features.md) - Feature specifications
+- [Data Models](docs/data-models/core-models.md) - Django ORM models and schema
 
-### Tech Stack
-- [Technology Choices](docs/tech-stack/technology-choices.md) - Complete tech stack with rationale
-
-### Sprint Plans
-- [Sprint 1: Foundation (Weeks 1-4)](sprints/phase-1/sprint-1-foundation.md)
-- [Sprint 2: Core Engine (Weeks 5-8)](sprints/phase-1/sprint-2-core-engine.md)
-- Sprint 3: Features (Weeks 9-12) - TBD
-- Sprint 4: Polish (Weeks 13-16) - TBD
+### Guides
+- [Testing Guide](docs/guides/testing.md) - Testing strategy and commands
+- [Security Guide](docs/guides/security.md) - Security features and best practices
 
 ---
 

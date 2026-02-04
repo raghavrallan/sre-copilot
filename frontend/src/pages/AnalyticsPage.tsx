@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
   if (loading) {
     return (
       <div className="px-4 sm:px-0">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">📊 Cost Analytics</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Cost Analytics</h1>
         <div className="text-center py-8">Loading analytics...</div>
       </div>
     )
@@ -110,7 +110,7 @@ export default function AnalyticsPage() {
     <div className="px-4 sm:px-0">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">📊 AI Cost Analytics</h1>
+          <h1 className="text-3xl font-bold text-gray-900">AI Cost Analytics</h1>
           <p className="text-sm text-gray-600 mt-2">
             Monitor AI service costs, token usage, and optimization opportunities
           </p>
@@ -166,7 +166,7 @@ export default function AnalyticsPage() {
       {/* Cache Stats */}
       {costSummary && (
         <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">⚡ Cache Performance</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Cache Performance</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-sm text-gray-600">Total Incidents</div>
@@ -180,13 +180,13 @@ export default function AnalyticsPage() {
                 {costSummary.cache_stats.cache_hit_rate.toFixed(1)}%
               </div>
               {costSummary.cache_stats.cache_hit_rate >= 80 && (
-                <div className="text-xs text-green-600 mt-1">✅ Excellent</div>
+                <div className="text-xs text-green-600 mt-1">Excellent</div>
               )}
               {costSummary.cache_stats.cache_hit_rate < 80 && costSummary.cache_stats.cache_hit_rate >= 50 && (
-                <div className="text-xs text-yellow-600 mt-1">⚠️ Good</div>
+                <div className="text-xs text-yellow-600 mt-1">Good</div>
               )}
               {costSummary.cache_stats.cache_hit_rate < 50 && (
-                <div className="text-xs text-red-600 mt-1">❌ Needs improvement</div>
+                <div className="text-xs text-red-600 mt-1">Needs improvement</div>
               )}
             </div>
             <div className="bg-blue-50 rounded-lg p-4">
@@ -203,7 +203,7 @@ export default function AnalyticsPage() {
       {/* Token Usage by Type */}
       {tokenUsage && tokenUsage.breakdown_by_type.length > 0 && (
         <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">📈 Usage by Request Type</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Usage by Request Type</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -257,7 +257,7 @@ export default function AnalyticsPage() {
       {/* Most Expensive Incidents */}
       {costSummary && costSummary.most_expensive_incidents.length > 0 && (
         <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">💸 Most Expensive Incidents</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Most Expensive Incidents</h2>
           <div className="space-y-3">
             {costSummary.most_expensive_incidents.map((incident, index) => (
               <div key={incident.incident_id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -294,14 +294,11 @@ export default function AnalyticsPage() {
       {/* Recommendations */}
       {costSummary && costSummary.recommendations.length > 0 && (
         <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">💡 Optimization Recommendations</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Optimization Recommendations</h2>
           <div className="space-y-3">
             {costSummary.recommendations.map((rec, index) => (
               <div key={index} className={`border-2 rounded-lg p-4 ${getPriorityColor(rec.priority)}`}>
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl">
-                    {rec.priority === 'high' ? '🔴' : rec.priority === 'medium' ? '🟡' : '🔵'}
-                  </span>
                   <div className="flex-1">
                     <div className="font-semibold text-sm uppercase mb-1">
                       {rec.priority} Priority
@@ -318,7 +315,7 @@ export default function AnalyticsPage() {
       {/* Cost Timeline */}
       {tokenUsage && tokenUsage.timeline.length > 0 && (
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">📅 Cost Timeline</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Cost Timeline</h2>
           <div className="space-y-2">
             {tokenUsage.timeline.map((day) => (
               <div key={day.date} className="flex justify-between items-center py-2 border-b">

@@ -37,7 +37,13 @@ export default function Layout() {
                   to="/analytics"
                   className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
                 >
-                  📊 Analytics
+                  Analytics
+                </Link>
+                <Link
+                  to="/settings"
+                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
+                >
+                  Settings
                 </Link>
               </div>
             </div>

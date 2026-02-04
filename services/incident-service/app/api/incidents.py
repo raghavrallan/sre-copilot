@@ -42,6 +42,14 @@ class IncidentResponse(BaseModel):
         from_attributes = True
 
 
+class PaginatedIncidentsResponse(BaseModel):
+    items: List[IncidentResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
 class HypothesisResponse(BaseModel):
     id: str
     incident_id: str
@@ -55,22 +63,47 @@ class HypothesisResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/incidents", response_model=List[IncidentResponse])
+@router.get("/incidents", response_model=PaginatedIncidentsResponse)
 async def list_incidents(
     project_id: str = Query(...),
-    skip: int = 0,
-    limit: int = 10
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    severity: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
 ):
-    """List all incidents for a project"""
+    """List all incidents for a project with pagination"""
     # Verify project exists
     try:
         project = await Project.objects.aget(id=project_id)
     except Project.DoesNotExist:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Build query with filters
+    queryset = Incident.objects.filter(project=project)
+
+    if severity:
+        queryset = queryset.filter(severity=severity)
+    if state:
+        queryset = queryset.filter(state=state)
+    if search:
+        from django.db.models import Q
+        queryset = queryset.filter(
+            Q(title__icontains=search) |
+            Q(description__icontains=search) |
+            Q(service_name__icontains=search)
+        )
+
+    # Get total count
+    total = await queryset.acount()
+
+    # Calculate pagination
+    skip = (page - 1) * limit
+    pages = (total + limit - 1) // limit  # Ceiling division
+
     # Get incidents
     incidents = []
-    async for incident in Incident.objects.filter(project=project).order_by('-detected_at')[skip:skip+limit]:
+    async for incident in queryset.order_by('-detected_at')[skip:skip+limit]:
         incidents.append(IncidentResponse(
             id=str(incident.id),
             title=incident.title,
@@ -82,7 +115,13 @@ async def list_incidents(
             created_at=incident.created_at
         ))
 
-    return incidents
+    return PaginatedIncidentsResponse(
+        items=incidents,
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages
+    )
 
 
 @router.post("/incidents", response_model=IncidentResponse)
@@ -179,6 +218,103 @@ async def get_incident(
         detected_at=incident.detected_at,
         created_at=incident.created_at
     )
+
+
+@router.get("/incidents-stats")
+async def get_incident_stats(
+    project_id: str = Query(...)
+):
+    """Get incident statistics for dashboard"""
+    # Verify project exists
+    try:
+        project = await Project.objects.aget(id=project_id)
+    except Project.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    queryset = Incident.objects.filter(project=project)
+
+    # Get counts
+    total = await queryset.acount()
+    critical = await queryset.filter(severity='critical').acount()
+    high = await queryset.filter(severity='high').acount()
+    medium = await queryset.filter(severity='medium').acount()
+    low = await queryset.filter(severity='low').acount()
+
+    open_count = await queryset.filter(state='open').acount()
+    investigating = await queryset.filter(state='investigating').acount()
+    resolved = await queryset.filter(state='resolved').acount()
+    closed = await queryset.filter(state='closed').acount()
+
+    return {
+        "total": total,
+        "by_severity": {
+            "critical": critical,
+            "high": high,
+            "medium": medium,
+            "low": low
+        },
+        "by_state": {
+            "open": open_count,
+            "investigating": investigating,
+            "resolved": resolved,
+            "closed": closed
+        }
+    }
+
+
+@router.get("/incidents-timeline")
+async def get_incident_timeline(
+    project_id: str = Query(...),
+    days: int = Query(7, ge=1, le=365)
+):
+    """Get incident counts grouped by day for timeline chart"""
+    from datetime import timedelta
+    from django.db.models import Count
+    from django.db.models.functions import TruncDate
+
+    # Verify project exists
+    try:
+        project = await Project.objects.aget(id=project_id)
+    except Project.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Calculate date range
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=days)
+
+    # Get incidents grouped by date
+    queryset = Incident.objects.filter(
+        project=project,
+        detected_at__gte=start_date,
+        detected_at__lte=end_date
+    ).annotate(
+        date=TruncDate('detected_at')
+    ).values('date').annotate(
+        count=Count('id')
+    ).order_by('date')
+
+    # Convert to dict for easy lookup
+    incidents_by_date = {}
+    async for item in queryset:
+        if item['date']:
+            incidents_by_date[item['date'].isoformat()] = item['count']
+
+    # Build complete timeline with all days
+    timeline = []
+    for i in range(days):
+        date = (start_date + timedelta(days=i)).date()
+        date_str = date.isoformat()
+        timeline.append({
+            "date": date_str,
+            "count": incidents_by_date.get(date_str, 0)
+        })
+
+    return {
+        "days": days,
+        "start_date": start_date.date().isoformat(),
+        "end_date": end_date.date().isoformat(),
+        "timeline": timeline
+    }
 
 
 @router.get("/incidents/{incident_id}/hypotheses", response_model=List[HypothesisResponse])

@@ -6,7 +6,6 @@ import {
 } from 'recharts'
 import api from '../services/api'
 import { Incident } from '../types/incident'
-import { useRealTimeIncidents } from '../hooks/useRealTimeIncidents'
 import { useWebSocket } from '../contexts/WebSocketContext'
 import { useWebSocketEvent } from '../hooks/useWebSocketEvent'
 import { AlertTriangle, Activity, CheckCircle, Clock } from 'lucide-react'
@@ -22,28 +21,71 @@ interface Alert {
   annotations: Record<string, string>
 }
 
+interface IncidentStats {
+  total: number
+  by_severity: {
+    critical: number
+    high: number
+    medium: number
+    low: number
+  }
+  by_state: {
+    open: number
+    investigating: number
+    resolved: number
+    closed: number
+  }
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [alerts, setAlerts] = useState<Alert[]>([])
-
-  // Use real-time incidents hook
-  const { incidents, setIncidents } = useRealTimeIncidents([])
+  const [stats, setStats] = useState<IncidentStats | null>(null)
+  const [recentIncidents, setRecentIncidents] = useState<Incident[]>([])
+  const [timelineDays, setTimelineDays] = useState(7)
+  const [timelineData, setTimelineData] = useState<{date: string, count: number}[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
   const { isConnected } = useWebSocket()
 
   useEffect(() => {
-    const fetchIncidents = async () => {
+    const fetchData = async () => {
       try {
-        const response = await api.get('/api/v1/incidents?limit=1000')
-        setIncidents(response.data)
+        const [statsResponse, incidentsResponse, timelineResponse] = await Promise.all([
+          api.get('/api/v1/incidents-stats'),
+          api.get('/api/v1/incidents?page=1&limit=10'),
+          api.get(`/api/v1/incidents-timeline?days=${timelineDays}`)
+        ])
+        setStats(statsResponse.data)
+        setRecentIncidents(incidentsResponse.data.items)
+        setTimelineData(timelineResponse.data.timeline || [])
       } catch (error) {
-        console.error('Failed to fetch incidents:', error)
+        console.error('Failed to fetch dashboard data:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchIncidents()
-  }, [setIncidents])
+    fetchData()
+  }, [])
+
+  // Fetch timeline when days filter changes
+  useEffect(() => {
+    const fetchTimeline = async () => {
+      setTimelineLoading(true)
+      try {
+        const response = await api.get(`/api/v1/incidents-timeline?days=${timelineDays}`)
+        setTimelineData(response.data.timeline || [])
+      } catch (error) {
+        console.error('Failed to fetch timeline:', error)
+      } finally {
+        setTimelineLoading(false)
+      }
+    }
+
+    if (!loading) {
+      fetchTimeline()
+    }
+  }, [timelineDays, loading])
 
   // Listen for new alerts
   useWebSocketEvent<any>('alert.fired', (alertData: any) => {
@@ -56,90 +98,57 @@ export default function DashboardPage() {
       labels: alertData.labels || {},
       annotations: alertData.annotations || {},
     }
-    setAlerts(prev => [newAlert, ...prev.slice(0, 9)]) // Keep only 10 most recent
+    setAlerts(prev => [newAlert, ...prev.slice(0, 9)])
   })
 
-  // Calculate statistics
-  const stats = useMemo(() => {
-    const total = incidents.length
-    const critical = incidents.filter(i => i.severity === 'critical').length
-    const open = incidents.filter(i => i.state === 'open' || i.state === 'investigating').length
-    const resolved = incidents.filter(i => i.state === 'resolved').length
-
-    return { total, critical, open, resolved }
-  }, [incidents])
+  // Listen for new incidents
+  useWebSocketEvent<Incident>('incident.created', (newIncident) => {
+    setRecentIncidents(prev => [newIncident, ...prev.slice(0, 9)])
+    if (stats) {
+      setStats({
+        ...stats,
+        total: stats.total + 1,
+        by_severity: {
+          ...stats.by_severity,
+          [newIncident.severity]: (stats.by_severity[newIncident.severity as keyof typeof stats.by_severity] || 0) + 1
+        },
+        by_state: {
+          ...stats.by_state,
+          [newIncident.state]: (stats.by_state[newIncident.state as keyof typeof stats.by_state] || 0) + 1
+        }
+      })
+    }
+  })
 
   // Prepare data for severity chart
   const severityData = useMemo(() => {
-    const counts: Record<string, number> = {
-      critical: 0,
-      high: 0,
-      medium: 0,
-      low: 0,
-    }
-
-    incidents.forEach(incident => {
-      if (incident.severity in counts) {
-        counts[incident.severity]++
-      }
-    })
-
+    if (!stats) return []
     return [
-      { name: 'Critical', value: counts.critical, color: '#ef4444' },
-      { name: 'High', value: counts.high, color: '#f97316' },
-      { name: 'Medium', value: counts.medium, color: '#eab308' },
-      { name: 'Low', value: counts.low, color: '#3b82f6' },
+      { name: 'Critical', value: stats.by_severity.critical, color: '#ef4444' },
+      { name: 'High', value: stats.by_severity.high, color: '#f97316' },
+      { name: 'Medium', value: stats.by_severity.medium, color: '#eab308' },
+      { name: 'Low', value: stats.by_severity.low, color: '#3b82f6' },
     ].filter(item => item.value > 0)
-  }, [incidents])
+  }, [stats])
 
   // Prepare data for state chart
   const stateData = useMemo(() => {
-    const counts: Record<string, number> = {
-      open: 0,
-      investigating: 0,
-      resolved: 0,
-      closed: 0,
-    }
-
-    incidents.forEach(incident => {
-      if (incident.state in counts) {
-        counts[incident.state]++
-      }
-    })
-
+    if (!stats) return []
     return [
-      { name: 'Open', value: counts.open },
-      { name: 'Investigating', value: counts.investigating },
-      { name: 'Resolved', value: counts.resolved },
-      { name: 'Closed', value: counts.closed },
+      { name: 'Open', value: stats.by_state.open },
+      { name: 'Investigating', value: stats.by_state.investigating },
+      { name: 'Resolved', value: stats.by_state.resolved },
+      { name: 'Closed', value: stats.by_state.closed },
     ].filter(item => item.value > 0)
-  }, [incidents])
+  }, [stats])
 
-  // Prepare data for timeline (last 7 days)
-  const timelineData = useMemo(() => {
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const date = new Date()
-      date.setDate(date.getDate() - (6 - i))
-      return date.toISOString().split('T')[0]
-    })
-
-    const incidentsByDay: Record<string, number> = {}
-    last7Days.forEach(day => {
-      incidentsByDay[day] = 0
-    })
-
-    incidents.forEach(incident => {
-      const day = incident.detected_at?.split('T')[0] || incident.created_at?.split('T')[0]
-      if (day && day in incidentsByDay) {
-        incidentsByDay[day]++
-      }
-    })
-
-    return last7Days.map(day => ({
-      date: new Date(day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      incidents: incidentsByDay[day],
+  // Format timeline data for chart
+  const formattedTimelineData = useMemo(() => {
+    return timelineData.map(item => ({
+      date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      incidents: item.count
     }))
-  }, [incidents])
+  }, [timelineData])
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -194,7 +203,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Incidents</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total.toLocaleString() || 0}</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <Activity className="w-6 h-6 text-blue-600" />
@@ -206,7 +215,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Critical</p>
-              <p className="text-3xl font-bold text-red-600 mt-2">{stats.critical}</p>
+              <p className="text-3xl font-bold text-red-600 mt-2">{stats?.by_severity.critical.toLocaleString() || 0}</p>
             </div>
             <div className="p-3 bg-red-100 rounded-full">
               <AlertTriangle className="w-6 h-6 text-red-600" />
@@ -218,7 +227,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Open/Investigating</p>
-              <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.open}</p>
+              <p className="text-3xl font-bold text-yellow-600 mt-2">{((stats?.by_state.open || 0) + (stats?.by_state.investigating || 0)).toLocaleString()}</p>
             </div>
             <div className="p-3 bg-yellow-100 rounded-full">
               <Clock className="w-6 h-6 text-yellow-600" />
@@ -230,7 +239,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Resolved</p>
-              <p className="text-3xl font-bold text-green-600 mt-2">{stats.resolved}</p>
+              <p className="text-3xl font-bold text-green-600 mt-2">{stats?.by_state.resolved.toLocaleString() || 0}</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
               <CheckCircle className="w-6 h-6 text-green-600" />
@@ -243,10 +252,27 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Incident Timeline */}
         <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Incident Timeline (7 Days)</h2>
-          {timelineData.some(d => d.incidents > 0) ? (
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Incident Timeline</h2>
+            <select
+              value={timelineDays}
+              onChange={(e) => setTimelineDays(Number(e.target.value))}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </div>
+          {timelineLoading ? (
+            <div className="flex items-center justify-center h-[250px] text-gray-500">
+              Loading...
+            </div>
+          ) : formattedTimelineData.some(d => d.incidents > 0) ? (
             <ResponsiveContainer width="100%" height={250}>
-              <AreaChart data={timelineData}>
+              <AreaChart data={formattedTimelineData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
@@ -256,7 +282,7 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-[250px] text-gray-500">
-              No incidents in the last 7 days
+              No incidents in the last {timelineDays} days
             </div>
           )}
         </div>
@@ -357,7 +383,7 @@ export default function DashboardPage() {
 
         {loading ? (
           <div className="text-center py-8 text-gray-500">Loading...</div>
-        ) : incidents.length === 0 ? (
+        ) : recentIncidents.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             No incidents found. System is running smoothly!
           </div>
@@ -384,7 +410,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {incidents.slice(0, 10).map((incident) => (
+                {recentIncidents.map((incident) => (
                   <tr key={incident.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Link

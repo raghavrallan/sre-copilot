@@ -62,7 +62,7 @@ class ProjectMember(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
-    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='project_memberships')
+    user = models.ForeignKey('shared.User', on_delete=models.CASCADE, related_name='project_memberships')
 
     # Access Control
     role = models.CharField(

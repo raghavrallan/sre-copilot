@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
                 ('error_message', models.TextField(blank=True, help_text='Error message if request failed')),
                 ('success', models.BooleanField(default=True, help_text='Whether the request was successful')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('incident', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='ai_requests', to='incident.Incident')),
+                ('incident', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='ai_requests', to='shared.Incident')),
             ],
             options={
                 'db_table': 'ai_requests',
@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
                 ('completed_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('incident', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='analysis_steps', to='incident.Incident')),
+                ('incident', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='analysis_steps', to='shared.Incident')),
             ],
             options={
                 'db_table': 'analysis_steps',

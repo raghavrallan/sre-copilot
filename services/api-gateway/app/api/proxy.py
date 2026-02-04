@@ -390,18 +390,66 @@ async def remove_project_member(
 # Incident endpoints
 @router.get("/incidents")
 async def list_incidents(
-    skip: int = 0,
-    limit: int = 10,
+    page: int = 1,
+    limit: int = 20,
+    severity: Optional[str] = None,
+    state: Optional[str] = None,
+    search: Optional[str] = None,
     user=Depends(get_current_user_from_token)
 ):
-    """Proxy to incident service - list incidents"""
+    """Proxy to incident service - list incidents with pagination"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    params = {
+        "page": page,
+        "limit": limit,
+        "project_id": user["project_id"]
+    }
+    if severity:
+        params["severity"] = severity
+    if state:
+        params["state"] = state
+    if search:
+        params["search"] = search
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.get(
+            f"{settings.INCIDENT_SERVICE_URL}/incidents",
+            params=params
+        )
+        return response.json()
+
+
+@router.get("/incidents-stats")
+async def get_incidents_stats(
+    user=Depends(get_current_user_from_token)
+):
+    """Proxy to incident service - get incident statistics"""
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
-            f"{settings.INCIDENT_SERVICE_URL}/incidents",
-            params={"skip": skip, "limit": limit, "project_id": user["project_id"]}
+            f"{settings.INCIDENT_SERVICE_URL}/incidents-stats",
+            params={"project_id": user["project_id"]}
+        )
+        return response.json()
+
+
+@router.get("/incidents-timeline")
+async def get_incidents_timeline(
+    days: int = 7,
+    user=Depends(get_current_user_from_token)
+):
+    """Proxy to incident service - get incident timeline for charts"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.get(
+            f"{settings.INCIDENT_SERVICE_URL}/incidents-timeline",
+            params={"project_id": user["project_id"], "days": days}
         )
         return response.json()
 
@@ -591,5 +639,275 @@ async def get_analytics_incident_metrics(
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+# Monitoring Integration endpoints
+@router.get("/projects/{project_id}/monitoring/integrations")
+async def list_monitoring_integrations(
+    project_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - list monitoring integrations"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.get(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations",
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to list integrations')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.post("/projects/{project_id}/monitoring/integrations")
+async def create_monitoring_integration(
+    project_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - create monitoring integration"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    body = await request.json()
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to create integration')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.get("/projects/{project_id}/monitoring/integrations/{integration_id}")
+async def get_monitoring_integration(
+    project_id: str,
+    integration_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - get monitoring integration"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.get(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations/{integration_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to get integration')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.patch("/projects/{project_id}/monitoring/integrations/{integration_id}")
+async def update_monitoring_integration(
+    project_id: str,
+    integration_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - update monitoring integration"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    body = await request.json()
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.patch(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations/{integration_id}",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to update integration')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.delete("/projects/{project_id}/monitoring/integrations/{integration_id}")
+async def delete_monitoring_integration(
+    project_id: str,
+    integration_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - delete monitoring integration"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.delete(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations/{integration_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to delete integration')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.post("/projects/{project_id}/monitoring/integrations/test-connection")
+async def test_monitoring_connection(
+    project_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - test monitoring connection"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    body = await request.json()
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations/test-connection",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Connection test failed')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.post("/projects/{project_id}/monitoring/integrations/{integration_id}/test")
+async def test_existing_monitoring_integration(
+    project_id: str,
+    integration_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - test existing monitoring integration"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/integrations/{integration_id}/test",
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Connection test failed')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.get("/projects/{project_id}/monitoring/alerts")
+async def list_monitoring_alerts(
+    project_id: str,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """Proxy to auth service - list monitoring alerts"""
+    # Try to get token from Authorization header or cookies
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.get(
+            f"{settings.AUTH_SERVICE_URL}/projects/{project_id}/monitoring/alerts",
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=request.cookies
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to list alerts')
             raise HTTPException(status_code=response.status_code, detail=error_message)
         return response.json()

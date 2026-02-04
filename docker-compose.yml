@@ -78,6 +78,7 @@ services:
       - JWT_SECRET_KEY=your-secret-key-change-in-production
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - MONITORING_ENCRYPTION_KEY=${MONITORING_ENCRYPTION_KEY}
     ports:
       - "8001:8001"
     depends_on:
@@ -149,6 +150,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://sre_user:sre_password@postgres:5432/sre_copilot
       - REDIS_URL=redis://redis:6379/0
+      - MONITORING_ENCRYPTION_KEY=${MONITORING_ENCRYPTION_KEY}
     ports:
       - "8004:8004"
     depends_on:
