@@ -10,7 +10,7 @@ import httpx
 import uuid
 import os
 
-from shared.models.incident import Incident, Hypothesis, IncidentState, IncidentSeverity
+from shared.models.incident import Incident, Hypothesis, IncidentState, IncidentSeverity, IncidentActivity, IncidentActivityType
 from shared.models.tenant import Tenant
 from shared.models.project import Project
 from shared.models.analysis_step import AnalysisStep, AnalysisStepType, AnalysisStepStatus
@@ -63,6 +63,45 @@ class HypothesisResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UpdateStateRequest(BaseModel):
+    state: str
+    comment: Optional[str] = None
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+class AddCommentRequest(BaseModel):
+    content: str
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+class ActivityResponse(BaseModel):
+    id: str
+    incident_id: str
+    activity_type: str
+    content: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    user_id: Optional[str] = None
+    user_name: str
+    user_email: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UpdateSeverityRequest(BaseModel):
+    severity: str
+    comment: Optional[str] = None
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
 
 
 @router.get("/incidents", response_model=PaginatedIncidentsResponse)
@@ -377,10 +416,10 @@ async def get_hypotheses(
 @router.patch("/incidents/{incident_id}/state")
 async def update_incident_state(
     incident_id: str,
-    state: str,
+    request: UpdateStateRequest,
     project_id: str = Query(...)
 ):
-    """Update incident state"""
+    """Update incident state with optional comment"""
     # Verify incident exists and belongs to project
     try:
         incident = await Incident.objects.select_related('project').aget(
@@ -390,14 +429,29 @@ async def update_incident_state(
     except Incident.DoesNotExist:
         raise HTTPException(status_code=404, detail="Incident not found")
 
+    old_state = incident.state
+
     # Update state
-    incident.state = state
-    if state == IncidentState.ACKNOWLEDGED:
+    incident.state = request.state
+    if request.state == IncidentState.ACKNOWLEDGED:
         incident.acknowledged_at = timezone.now()
-    elif state == IncidentState.RESOLVED:
+    elif request.state == IncidentState.RESOLVED:
         incident.resolved_at = timezone.now()
 
     await incident.asave()
+
+    # Create activity record for state change
+    activity_content = request.comment or f"Changed state from {old_state} to {request.state}"
+    await IncidentActivity.objects.acreate(
+        incident=incident,
+        activity_type=IncidentActivityType.STATE_CHANGE,
+        content=activity_content,
+        old_value=old_state,
+        new_value=request.state,
+        user_id=request.user_id,
+        user_name=request.user_name or "System",
+        user_email=request.user_email or ""
+    )
 
     # Publish incident.updated event to WebSocket
     try:
@@ -410,11 +464,132 @@ async def update_incident_state(
                 "state": incident.state,
                 "severity": incident.severity,
                 "detected_at": incident.detected_at.isoformat(),
-                "created_at": incident.created_at.isoformat()
+                "created_at": incident.created_at.isoformat(),
+                "acknowledged_at": incident.acknowledged_at.isoformat() if incident.acknowledged_at else None,
+                "resolved_at": incident.resolved_at.isoformat() if incident.resolved_at else None
             },
             tenant_id=str(incident.project.tenant_id)
         )
     except Exception as e:
         print(f"Failed to publish incident.updated event: {e}")
 
-    return {"status": "success", "incident_id": str(incident.id), "new_state": state}
+    return {"status": "success", "incident_id": str(incident.id), "new_state": request.state}
+
+
+@router.patch("/incidents/{incident_id}/severity")
+async def update_incident_severity(
+    incident_id: str,
+    request: UpdateSeverityRequest,
+    project_id: str = Query(...)
+):
+    """Update incident severity with optional comment"""
+    try:
+        incident = await Incident.objects.select_related('project').aget(
+            id=incident_id,
+            project_id=project_id
+        )
+    except Incident.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    old_severity = incident.severity
+    incident.severity = request.severity
+    await incident.asave()
+
+    # Create activity record
+    activity_content = request.comment or f"Changed severity from {old_severity} to {request.severity}"
+    await IncidentActivity.objects.acreate(
+        incident=incident,
+        activity_type=IncidentActivityType.SEVERITY_CHANGE,
+        content=activity_content,
+        old_value=old_severity,
+        new_value=request.severity,
+        user_id=request.user_id,
+        user_name=request.user_name or "System",
+        user_email=request.user_email or ""
+    )
+
+    # Publish update
+    try:
+        await redis_publisher.publish_incident_updated(
+            incident_data={
+                "id": str(incident.id),
+                "title": incident.title,
+                "severity": incident.severity,
+                "state": incident.state
+            },
+            tenant_id=str(incident.project.tenant_id)
+        )
+    except Exception as e:
+        print(f"Failed to publish incident.updated event: {e}")
+
+    return {"status": "success", "incident_id": str(incident.id), "new_severity": request.severity}
+
+
+@router.post("/incidents/{incident_id}/comments")
+async def add_comment(
+    incident_id: str,
+    request: AddCommentRequest,
+    project_id: str = Query(...)
+):
+    """Add a comment to an incident"""
+    try:
+        incident = await Incident.objects.aget(
+            id=incident_id,
+            project_id=project_id
+        )
+    except Incident.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    activity = await IncidentActivity.objects.acreate(
+        incident=incident,
+        activity_type=IncidentActivityType.COMMENT,
+        content=request.content,
+        user_id=request.user_id,
+        user_name=request.user_name or "Anonymous",
+        user_email=request.user_email or ""
+    )
+
+    return ActivityResponse(
+        id=str(activity.id),
+        incident_id=str(incident.id),
+        activity_type=activity.activity_type,
+        content=activity.content,
+        old_value=activity.old_value,
+        new_value=activity.new_value,
+        user_id=str(activity.user_id) if activity.user_id else None,
+        user_name=activity.user_name,
+        user_email=activity.user_email,
+        created_at=activity.created_at
+    )
+
+
+@router.get("/incidents/{incident_id}/activities", response_model=List[ActivityResponse])
+async def get_incident_activities(
+    incident_id: str,
+    project_id: str = Query(...)
+):
+    """Get activity timeline for an incident"""
+    try:
+        incident = await Incident.objects.aget(
+            id=incident_id,
+            project_id=project_id
+        )
+    except Incident.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    activities = []
+    async for activity in IncidentActivity.objects.filter(incident=incident).order_by('-created_at'):
+        activities.append(ActivityResponse(
+            id=str(activity.id),
+            incident_id=str(incident.id),
+            activity_type=activity.activity_type,
+            content=activity.content,
+            old_value=activity.old_value,
+            new_value=activity.new_value,
+            user_id=str(activity.user_id) if activity.user_id else None,
+            user_name=activity.user_name,
+            user_email=activity.user_email,
+            created_at=activity.created_at
+        ))
+
+    return activities

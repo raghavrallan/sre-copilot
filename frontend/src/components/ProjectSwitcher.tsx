@@ -4,7 +4,7 @@ import api from '../services/api'
 import { ChevronDown, Check } from 'lucide-react'
 
 export default function ProjectSwitcher() {
-  const { currentProject, projects, switchProject, token } = useAuthStore()
+  const { currentProject, projects, switchProject } = useAuthStore()
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -36,14 +36,10 @@ export default function ProjectSwitcher() {
 
     setLoading(true)
     try {
+      // Use cookies for authentication (withCredentials is set in api.ts)
       const response = await api.post(
         '/api/v1/auth/switch-project',
-        { project_id: projectId },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { project_id: projectId }
       )
 
       const { access_token, project } = response.data

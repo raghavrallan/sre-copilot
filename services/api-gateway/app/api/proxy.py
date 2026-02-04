@@ -105,16 +105,21 @@ async def switch_project(
     authorization: Optional[str] = Header(None)
 ):
     """Proxy to auth service - switch project"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
+    project_id = body.get("project_id")
+
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
             f"{settings.AUTH_SERVICE_URL}/switch-project",
-            json=body,
-            headers={"Authorization": authorization}
+            params={"project_id": project_id},
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Failed to switch project')
@@ -557,14 +562,80 @@ async def update_incident_state(
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
-    state = body.get("state")
-    if not state:
-        raise HTTPException(status_code=400, detail="State is required")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.patch(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/state",
-            params={"state": state, "project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            json=body
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Request failed')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.patch("/incidents/{incident_id}/severity")
+async def update_incident_severity(
+    incident_id: str,
+    request: Request,
+    user=Depends(get_current_user_from_token)
+):
+    """Proxy to incident service - update incident severity"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    body = await request.json()
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.patch(
+            f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/severity",
+            params={"project_id": user["project_id"]},
+            json=body
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Request failed')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.post("/incidents/{incident_id}/comments")
+async def add_incident_comment(
+    incident_id: str,
+    request: Request,
+    user=Depends(get_current_user_from_token)
+):
+    """Proxy to incident service - add comment"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    body = await request.json()
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/comments",
+            params={"project_id": user["project_id"]},
+            json=body
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Request failed')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.get("/incidents/{incident_id}/activities")
+async def get_incident_activities(
+    incident_id: str,
+    user=Depends(get_current_user_from_token)
+):
+    """Proxy to incident service - get activities"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.get(
+            f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/activities",
+            params={"project_id": user["project_id"]}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
