@@ -6,6 +6,8 @@ export interface Incident {
   state: 'detected' | 'acknowledged' | 'investigating' | 'resolved'
   severity: 'critical' | 'high' | 'medium' | 'low'
   detected_at: string
+  acknowledged_at?: string
+  resolved_at?: string
   created_at: string
 }
 

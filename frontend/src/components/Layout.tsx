@@ -40,6 +40,12 @@ export default function Layout() {
                   Analytics
                 </Link>
                 <Link
+                  to="/status"
+                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
+                >
+                  Status
+                </Link>
+                <Link
                   to="/settings"
                   className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
                 >

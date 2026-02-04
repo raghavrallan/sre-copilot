@@ -72,6 +72,54 @@ class Incident(models.Model):
         return f"[{self.severity}] {self.title}"
 
 
+class IncidentActivityType(models.TextChoices):
+    STATE_CHANGE = 'state_change', 'State Change'
+    COMMENT = 'comment', 'Comment'
+    SEVERITY_CHANGE = 'severity_change', 'Severity Change'
+    ASSIGNEE_CHANGE = 'assignee_change', 'Assignee Change'
+    SYSTEM = 'system', 'System'
+
+
+class IncidentActivity(models.Model):
+    """Activity log for incidents - comments, state changes, etc."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    incident = models.ForeignKey(Incident, on_delete=models.CASCADE, related_name='activities')
+
+    # Activity type
+    activity_type = models.CharField(
+        max_length=50,
+        choices=IncidentActivityType.choices,
+        default=IncidentActivityType.COMMENT
+    )
+
+    # Content
+    content = models.TextField(blank=True)  # Comment text or change description
+
+    # For state changes
+    old_value = models.CharField(max_length=100, blank=True, null=True)
+    new_value = models.CharField(max_length=100, blank=True, null=True)
+
+    # Author
+    user_id = models.UUIDField(null=True, blank=True)
+    user_name = models.CharField(max_length=255, blank=True)
+    user_email = models.CharField(max_length=255, blank=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = 'shared'
+        db_table = 'incident_activities'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['incident', 'created_at']),
+            models.Index(fields=['activity_type']),
+        ]
+
+    def __str__(self):
+        return f"[{self.activity_type}] {self.content[:50]}..."
+
+
 class Hypothesis(models.Model):
     """Root cause hypothesis"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

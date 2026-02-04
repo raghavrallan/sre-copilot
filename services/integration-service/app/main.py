@@ -3,6 +3,15 @@ Integration Service - External integrations (Prometheus, PagerDuty, etc.)
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
+import sys
+
+# Add shared to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+
+# Initialize Django for database access
+from shared.utils.database import setup_django
+setup_django()
 
 from app.api import webhooks
 

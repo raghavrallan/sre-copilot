@@ -9,6 +9,7 @@ import IncidentsPage from './pages/IncidentsPage'
 import IncidentDetailPage from './pages/IncidentDetailPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import SettingsPage from './pages/SettingsPage'
+import StatusPage from './pages/StatusPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -59,6 +60,7 @@ function App() {
           <Route path="incidents" element={<IncidentsPage />} />
           <Route path="incidents/:id" element={<IncidentDetailPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="status" element={<StatusPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
