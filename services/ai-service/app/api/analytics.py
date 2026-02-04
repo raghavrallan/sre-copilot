@@ -285,7 +285,7 @@ async def get_cost_summary(
 
         # Optimization recommendations
         recommendations = []
-        avg_cost = overall_stats['avg_cost_per_request'] or 0
+        avg_cost = float(overall_stats['avg_cost_per_request'] or 0)
 
         if avg_cost > 0.01:
             recommendations.append({
@@ -319,7 +319,7 @@ async def get_cost_summary(
             "cache_stats": {
                 "total_incidents": total_incident_count,
                 "cache_hit_rate": cache_hit_rate,
-                "potential_savings": float((overall_stats['total_cost'] or 0) * (cache_hit_rate / 100))
+                "potential_savings": float(overall_stats['total_cost'] or 0) * (cache_hit_rate / 100)
             },
             "most_expensive_incidents": expensive_incidents,
             "recommendations": recommendations
