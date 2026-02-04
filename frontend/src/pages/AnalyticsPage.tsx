@@ -63,8 +63,8 @@ export default function AnalyticsPage() {
     setLoading(true)
     try {
       const [usageResponse, summaryResponse] = await Promise.all([
-        api.get('http://localhost:8003/analytics/token-usage'),
-        api.get(`http://localhost:8003/analytics/cost-summary?days=${days}`)
+        api.get('/api/v1/analytics/token-usage'),
+        api.get(`/api/v1/analytics/cost-summary?days=${days}`)
       ])
       setTokenUsage(usageResponse.data)
       setCostSummary(summaryResponse.data)
