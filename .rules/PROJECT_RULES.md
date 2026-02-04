@@ -41,12 +41,64 @@ def get_token_from_request(request, authorization=None):
 - Never expose microservices directly to frontend
 - Always include `project_id` when forwarding requests
 
-### 4. Multi-Tenancy Isolation
-- Every query MUST filter by `tenant_id` or `project_id`
-- Never return data from other tenants
-- JWT contains tenant_id and project_id for validation
+### 4. Multi-Tenancy Isolation (CRITICAL SECURITY)
+- **EVERY database query MUST filter by `project_id`** - No exceptions
+- **project_id comes from JWT token** - Never trust client-provided project_id
+- API Gateway extracts project_id from authenticated user and passes to services
+- Services MUST validate resource ownership before returning data
+- Never return data from other projects/tenants - this is a security vulnerability
 
-### 5. Error Handling
+```python
+# BAD - No project isolation (SECURITY VULNERABILITY)
+incidents = Incident.objects.filter(state='detected')
+
+# GOOD - Always filter by project_id
+incidents = Incident.objects.filter(state='detected', project_id=project_id)
+
+# BAD - Optional project_id
+def get_data(project_id: Optional[str] = None):
+    if project_id:
+        return Model.objects.filter(project_id=project_id)
+    return Model.objects.all()  # LEAKS ALL DATA!
+
+# GOOD - Required project_id
+def get_data(project_id: str):  # Required, not optional
+    return Model.objects.filter(project_id=project_id)
+
+# GOOD - Validate resource ownership
+def get_incident(incident_id: str, project_id: str):
+    # Verify incident belongs to this project
+    incident = Incident.objects.get(id=incident_id, project_id=project_id)
+    return incident
+```
+
+### 5. API Gateway Security Pattern
+- API Gateway authenticates user and extracts project_id from JWT
+- project_id is passed as query parameter to downstream services
+- Services treat project_id as REQUIRED (not optional)
+- Services NEVER trust project_id from request body/path - only from query param set by gateway
+
+```python
+# API Gateway - Extract project_id from authenticated user
+@router.get("/resource")
+async def get_resource(user=Depends(get_current_user_from_token)):
+    if not user:
+        raise HTTPException(status_code=401)
+    # Pass project_id from JWT to service
+    response = await client.get(
+        f"{SERVICE_URL}/resource",
+        params={"project_id": user["project_id"]}  # From JWT, not from client
+    )
+
+# Service - project_id is REQUIRED
+@router.get("/resource")
+async def get_resource(
+    project_id: str = Query(..., description="Required for isolation")
+):
+    return Resource.objects.filter(project_id=project_id)
+```
+
+### 6. Error Handling
 - Always return meaningful error messages
 - On 401, frontend redirects to login and clears cookies
 - Log errors with context (user_id, project_id, request_id)

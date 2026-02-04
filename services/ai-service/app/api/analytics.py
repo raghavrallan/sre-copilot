@@ -1,11 +1,14 @@
 """
 Analytics endpoints for AI service cost monitoring
+
+IMPORTANT: All endpoints require project_id for multi-tenancy isolation.
+The API Gateway passes project_id from the authenticated user's JWT token.
 """
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 from datetime import datetime, timedelta
 from django.utils import timezone
-from django.db.models import Sum, Count, Avg, F
+from django.db.models import Sum, Count, Avg
 from django.db.models.functions import TruncDate
 from asgiref.sync import sync_to_async
 
@@ -18,22 +21,26 @@ router = APIRouter()
 
 @router.get("/analytics/token-usage")
 async def get_token_usage(
+    project_id: str = Query(..., description="Project ID (required for isolation)"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-    incident_id: Optional[str] = Query(None, description="Filter by incident ID"),
-    project_id: Optional[str] = Query(None, description="Project ID")
+    incident_id: Optional[str] = Query(None, description="Filter by incident ID")
 ):
     """
-    Get token usage statistics
+    Get token usage statistics for a specific project.
+
+    SECURITY: Filters all data by project_id to ensure tenant isolation.
     """
     @sync_to_async
     def get_token_usage_data():
-        # Build query filters
-        filters = {}
+        # REQUIRED: Filter by project_id for multi-tenancy
+        filters = {'incident__project_id': project_id}
+
         if incident_id:
+            # Verify incident belongs to this project
+            if not Incident.objects.filter(id=incident_id, project_id=project_id).exists():
+                raise HTTPException(status_code=404, detail="Incident not found in this project")
             filters['incident_id'] = incident_id
-        if project_id:
-            filters['incident__project_id'] = project_id
 
         # Default to last 7 days if no dates provided
         if start_date:
@@ -46,7 +53,7 @@ async def get_token_usage(
             end_dt = timezone.make_aware(datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
             filters['created_at__lt'] = end_dt
 
-        # Get all AI requests matching filters
+        # Get AI requests filtered by project
         ai_requests = AIRequest.objects.filter(**filters)
 
         # Aggregate totals in single query
@@ -72,7 +79,7 @@ async def get_token_usage(
                 "timeline": []
             }
 
-        # Efficient breakdown by request type using single query with grouping
+        # Efficient breakdown by request type
         breakdown = list(
             ai_requests.values('request_type')
             .annotate(
@@ -84,7 +91,6 @@ async def get_token_usage(
             .order_by('-cost_usd')
         )
 
-        # Format breakdown
         formatted_breakdown = [{
             "request_type": item['request_type'],
             "count": item['count'],
@@ -94,7 +100,7 @@ async def get_token_usage(
             "cost_usd": float(item['cost_usd'] or 0)
         } for item in breakdown]
 
-        # Efficient timeline using TruncDate - single query
+        # Efficient timeline using TruncDate
         timeline_data = list(
             ai_requests
             .annotate(date=TruncDate('created_at'))
@@ -106,7 +112,6 @@ async def get_token_usage(
             .order_by('date')
         )
 
-        # Format timeline
         timeline = [{
             "date": item['date'].strftime("%Y-%m-%d") if item['date'] else None,
             "requests": item['requests'] or 0,
@@ -130,27 +135,32 @@ async def get_token_usage(
 @router.get("/analytics/incident-metrics/{incident_id}")
 async def get_incident_metrics(
     incident_id: str,
-    project_id: Optional[str] = Query(None, description="Project ID")
+    project_id: str = Query(..., description="Project ID (required for isolation)")
 ):
     """
-    Get detailed metrics for a specific incident
+    Get detailed metrics for a specific incident.
+
+    SECURITY: Validates incident belongs to the specified project.
     """
     @sync_to_async
     def get_incident_metrics_data():
-        # Verify incident exists
+        # SECURITY: Verify incident exists AND belongs to this project
         try:
-            incident = Incident.objects.get(id=incident_id)
+            incident = Incident.objects.get(id=incident_id, project_id=project_id)
         except Incident.DoesNotExist:
-            raise HTTPException(status_code=404, detail="Incident not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Incident not found or does not belong to this project"
+            )
 
-        # Get aggregates first
+        # Get aggregates
         aggregates = AIRequest.objects.filter(incident_id=incident_id).aggregate(
             total_requests=Count('id'),
             total_tokens=Sum('total_tokens'),
             total_cost=Sum('cost_usd')
         )
 
-        # Get AI requests with values() for efficiency
+        # Get AI requests
         ai_requests = list(
             AIRequest.objects.filter(incident_id=incident_id)
             .order_by('created_at')
@@ -174,7 +184,7 @@ async def get_incident_metrics(
             "created_at": req['created_at'].isoformat() if req['created_at'] else None
         } for req in ai_requests]
 
-        # Get analysis steps with values() for efficiency
+        # Get analysis steps
         analysis_steps = list(
             AnalysisStep.objects.filter(incident_id=incident_id)
             .order_by('step_number')
@@ -216,22 +226,25 @@ async def get_incident_metrics(
 
 @router.get("/analytics/cost-summary")
 async def get_cost_summary(
-    days: int = Query(7, description="Number of days to look back"),
-    project_id: Optional[str] = Query(None, description="Project ID")
+    project_id: str = Query(..., description="Project ID (required for isolation)"),
+    days: int = Query(7, description="Number of days to look back")
 ):
     """
-    Get overall cost summary and statistics
+    Get overall cost summary and statistics for a specific project.
+
+    SECURITY: Filters all data by project_id to ensure tenant isolation.
     """
     @sync_to_async
     def get_cost_summary_data():
         start_date = timezone.now() - timedelta(days=days)
 
-        # Build filters
-        filters = {'created_at__gte': start_date}
-        if project_id:
-            filters['incident__project_id'] = project_id
+        # REQUIRED: Filter by project_id for multi-tenancy
+        filters = {
+            'created_at__gte': start_date,
+            'incident__project_id': project_id
+        }
 
-        # Overall stats - single query
+        # Overall stats - filtered by project
         overall_stats = AIRequest.objects.filter(**filters).aggregate(
             total_requests=Count('id'),
             total_cost=Sum('cost_usd'),
@@ -241,7 +254,7 @@ async def get_cost_summary(
 
         total_requests = overall_stats['total_requests'] or 0
 
-        # Most expensive incidents - efficient grouped query
+        # Most expensive incidents - filtered by project
         expensive_incidents_data = list(
             AIRequest.objects.filter(**filters)
             .values('incident_id')
@@ -252,11 +265,11 @@ async def get_cost_summary(
             .order_by('-total_cost')[:10]
         )
 
-        # Get incident titles in single query
+        # Get incident titles (already filtered by project through the join)
         incident_ids = [item['incident_id'] for item in expensive_incidents_data]
         incidents = {
             str(inc.id): inc.title
-            for inc in Incident.objects.filter(id__in=incident_ids)
+            for inc in Incident.objects.filter(id__in=incident_ids, project_id=project_id)
         }
 
         expensive_incidents = [{
@@ -266,12 +279,11 @@ async def get_cost_summary(
             "total_requests": item['total_requests']
         } for item in expensive_incidents_data if str(item['incident_id']) in incidents]
 
-        # Calculate cache effectiveness
-        incident_filters = {'created_at__gte': start_date}
-        if project_id:
-            incident_filters['project_id'] = project_id
-
-        total_incident_count = Incident.objects.filter(**incident_filters).count()
+        # Calculate cache effectiveness - filtered by project
+        total_incident_count = Incident.objects.filter(
+            created_at__gte=start_date,
+            project_id=project_id
+        ).count()
 
         cache_hit_rate = 0.0
         if total_incident_count > 0 and total_requests > 0:
