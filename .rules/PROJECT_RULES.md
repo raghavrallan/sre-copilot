@@ -217,8 +217,8 @@ REDIS_URL=redis://redis:6379/0
 JWT_SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 # Service URLs (internal)
-AUTH_SERVICE_URL=http://auth-service:8001
-INCIDENT_SERVICE_URL=http://incident-service:8002
+AUTH_SERVICE_URL=http://auth-service:8501
+INCIDENT_SERVICE_URL=http://incident-service:8502
 ```
 
 ## Git Conventions

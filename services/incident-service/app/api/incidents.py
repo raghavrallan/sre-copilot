@@ -19,7 +19,7 @@ from app.services.redis_publisher import redis_publisher
 router = APIRouter()
 
 # Service URLs from environment
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:8003")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:8503")
 
 
 class CreateIncidentRequest(BaseModel):

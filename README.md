@@ -117,13 +117,13 @@ sre-copilot/
 │       └── technology-choices.md      # Tech stack decisions
 │
 ├── services/                          # Microservices
-│   ├── api-gateway/                   # API Gateway (Port 8000)
-│   ├── auth-service/                  # Authentication (Port 8001)
-│   ├── incident-service/              # Incidents (Port 8002)
-│   ├── ai-service/                    # AI/ML (Port 8003)
-│   ├── integration-service/           # Webhooks (Port 8004)
-│   ├── websocket-service/             # Real-time (Port 8005)
-│   └── audit-service/                 # Audit logs (Port 8008)
+│   ├── api-gateway/                   # API Gateway (Port 8500)
+│   ├── auth-service/                  # Authentication (Port 8501)
+│   ├── incident-service/              # Incidents (Port 8502)
+│   ├── ai-service/                    # AI/ML (Port 8503)
+│   ├── integration-service/           # Webhooks (Port 8504)
+│   ├── websocket-service/             # Real-time (Port 8505)
+│   └── audit-service/                 # Audit logs (Port 8508)
 │
 ├── frontend/                          # React + TypeScript (Port 5173)
 │   ├── src/
@@ -204,9 +204,9 @@ docker-compose down
 ```
 
 **Services:**
-- API: http://localhost:8000
+- API: http://localhost:8580
 - Frontend: http://localhost:5173
-- API Docs: http://localhost:8000/docs
+- API Docs: http://localhost:8580/docs
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
 

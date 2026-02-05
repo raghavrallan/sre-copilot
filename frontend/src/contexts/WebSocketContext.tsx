@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { useAuthStore } from '../lib/stores/auth-store'
 import toast from 'react-hot-toast'
 
-const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8005'
+const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8505'
 const RECONNECT_INTERVAL = 5000
 const MAX_RECONNECT_ATTEMPTS = 10
 
@@ -62,7 +62,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
       setConnectionStatus('connecting')
 
       // Fetch WebSocket token using cookie (cookie set during login)
-      const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:8080'
+      const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:8580'
       const tokenResponse = await fetch(`${apiUrl}/api/v1/auth/ws-token`, {
         credentials: 'include'
       })

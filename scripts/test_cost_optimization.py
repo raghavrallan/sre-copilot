@@ -19,7 +19,7 @@ from datetime import datetime
 import json
 
 
-API_BASE_URL = "http://localhost:8000/api/v1"
+API_BASE_URL = "http://localhost:8580/api/v1"
 PROJECT_ID = "af98d006-d24f-4e57-be34-4e2d3b1c2a61"  # Default project ID
 
 
@@ -51,7 +51,7 @@ async def get_analytics(client: httpx.AsyncClient):
     """Get analytics from AI service"""
     try:
         response = await client.get(
-            "http://localhost:8003/analytics/token-usage"
+            "http://localhost:8503/analytics/token-usage"
         )
         response.raise_for_status()
         return response.json()
@@ -64,7 +64,7 @@ async def get_cost_summary(client: httpx.AsyncClient):
     """Get cost summary from AI service"""
     try:
         response = await client.get(
-            "http://localhost:8003/analytics/cost-summary?days=1"
+            "http://localhost:8503/analytics/cost-summary?days=1"
         )
         response.raise_for_status()
         return response.json()

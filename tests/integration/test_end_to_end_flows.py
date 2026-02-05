@@ -9,12 +9,12 @@ from datetime import datetime
 
 
 # Base URLs for services
-AUTH_SERVICE = "http://localhost:8001"
-INCIDENT_SERVICE = "http://localhost:8002"
-AI_SERVICE = "http://localhost:8003"
-INTEGRATION_SERVICE = "http://localhost:8004"
-WEBSOCKET_SERVICE = "http://localhost:8005"
-AUDIT_SERVICE = "http://localhost:8008"
+AUTH_SERVICE = "http://localhost:8501"
+INCIDENT_SERVICE = "http://localhost:8502"
+AI_SERVICE = "http://localhost:8503"
+INTEGRATION_SERVICE = "http://localhost:8504"
+WEBSOCKET_SERVICE = "http://localhost:8505"
+AUDIT_SERVICE = "http://localhost:8508"
 
 
 @pytest.fixture

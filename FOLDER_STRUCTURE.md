@@ -467,7 +467,7 @@ Tenant (1) ──< (*) User
 3. **Start Services**: `docker-compose up -d`
 4. **Run Migrations**: `python scripts/migrate.py`
 5. **Access Frontend**: http://localhost:5173
-6. **Access API Docs**: http://localhost:8000/docs
+6. **Access API Docs**: http://localhost:8580/docs
 
 All services have hot-reload enabled for development.
 

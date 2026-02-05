@@ -206,14 +206,14 @@ curl -s http://localhost:9093/api/v2/alerts | python -m json.tool | head -50
 # Login first at http://localhost:5173/login
 
 # Or check directly via incident service
-docker exec -it sre-copilot-incident-service curl "http://localhost:8002/incidents?tenant_id=e56947c7-554b-4ea8-9d88-97b16477b077&limit=10"
+docker exec -it sre-copilot-incident-service curl "http://localhost:8502/incidents?tenant_id=e56947c7-554b-4ea8-9d88-97b16477b077&limit=10"
 ```
 
 ### Check Hypotheses Generated
 
 ```bash
 # Get hypotheses for an incident (replace INCIDENT_ID)
-docker exec -it sre-copilot-incident-service curl "http://localhost:8002/incidents/INCIDENT_ID/hypotheses?tenant_id=e56947c7-554b-4ea8-9d88-97b16477b077"
+docker exec -it sre-copilot-incident-service curl "http://localhost:8502/incidents/INCIDENT_ID/hypotheses?tenant_id=e56947c7-554b-4ea8-9d88-97b16477b077"
 ```
 
 ## Tips & Troubleshooting

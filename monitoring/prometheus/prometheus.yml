@@ -36,28 +36,28 @@ scrape_configs:
   # SRE Copilot services
   - job_name: 'sre-copilot-api-gateway'
     static_configs:
-      - targets: ['api-gateway:8000']
+      - targets: ['api-gateway:8500']
         labels:
           service: 'api-gateway'
           env: 'development'
 
   - job_name: 'sre-copilot-auth-service'
     static_configs:
-      - targets: ['auth-service:8001']
+      - targets: ['auth-service:8501']
         labels:
           service: 'auth-service'
           env: 'development'
 
   - job_name: 'sre-copilot-incident-service'
     static_configs:
-      - targets: ['incident-service:8002']
+      - targets: ['incident-service:8502']
         labels:
           service: 'incident-service'
           env: 'development'
 
   - job_name: 'sre-copilot-ai-service'
     static_configs:
-      - targets: ['ai-service:8003']
+      - targets: ['ai-service:8503']
         labels:
           service: 'ai-service'
           env: 'development'

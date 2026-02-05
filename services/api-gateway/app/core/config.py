@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
-        "http://localhost:8000",
+        "http://localhost:8500",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
+        "http://127.0.0.1:8500",
         "http://frontend:5173"
     ]
 
@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
 
     # Microservices URLs
-    AUTH_SERVICE_URL: str = "http://auth-service:8001"
-    INCIDENT_SERVICE_URL: str = "http://incident-service:8002"
-    AI_SERVICE_URL: str = "http://ai-service:8003"
-    INTEGRATION_SERVICE_URL: str = "http://integration-service:8004"
+    AUTH_SERVICE_URL: str = "http://auth-service:8501"
+    INCIDENT_SERVICE_URL: str = "http://incident-service:8502"
+    AI_SERVICE_URL: str = "http://ai-service:8503"
+    INTEGRATION_SERVICE_URL: str = "http://integration-service:8504"
 
     # Timeouts
     SERVICE_TIMEOUT: int = 30

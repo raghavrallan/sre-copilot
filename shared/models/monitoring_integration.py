@@ -209,7 +209,7 @@ class MonitoringIntegration(models.Model):
     def get_webhook_url(self):
         """Get the webhook URL for this integration"""
         # Assumes integration service is accessible
-        integration_service_url = os.getenv('INTEGRATION_SERVICE_URL', 'http://integration-service:8004')
+        integration_service_url = os.getenv('INTEGRATION_SERVICE_URL', 'http://integration-service:8504')
         return f"{integration_service_url}/webhooks/{self.integration_type}/{self.id}"
 
     def to_dict(self, include_secrets=False):

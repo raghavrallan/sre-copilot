@@ -1,7 +1,7 @@
 # SRE Copilot - API Specifications
 
 **Last Updated:** 2026-02-01
-**Base URL:** `http://localhost:8000/api/v1`
+**Base URL:** `http://localhost:8580/api/v1`
 
 ---
 
@@ -399,7 +399,7 @@ Get cost summary with optimization recommendations.
 
 Connect to WebSocket for real-time updates.
 
-**URL:** `ws://localhost:8005/ws`
+**URL:** `ws://localhost:8505/ws`
 
 ### Authentication
 
@@ -540,14 +540,14 @@ GET /incidents?skip=20&limit=10
 
 Access interactive API documentation:
 
-- **Swagger UI:** http://localhost:8000/docs
-- **ReDoc:** http://localhost:8000/redoc
+- **Swagger UI:** http://localhost:8580/docs
+- **ReDoc:** http://localhost:8580/redoc
 
 Each microservice also has its own documentation:
-- Auth Service: http://localhost:8001/docs
-- Incident Service: http://localhost:8002/docs
-- AI Service: http://localhost:8003/docs
-- Integration Service: http://localhost:8004/docs
+- Auth Service: http://localhost:8501/docs
+- Incident Service: http://localhost:8502/docs
+- AI Service: http://localhost:8503/docs
+- Integration Service: http://localhost:8504/docs
 
 ---
 

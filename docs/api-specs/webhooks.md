@@ -25,7 +25,7 @@ SRE Copilot supports incoming webhooks from various monitoring tools to automati
 ### Endpoint
 
 ```
-POST http://localhost:8004/webhooks/alertmanager
+POST http://localhost:8504/webhooks/alertmanager
 ```
 
 ### Payload Format
@@ -152,7 +152,7 @@ receivers:
 
   - name: 'sre-copilot-webhook'
     webhook_configs:
-      - url: 'http://integration-service:8004/webhooks/alertmanager'
+      - url: 'http://integration-service:8504/webhooks/alertmanager'
         send_resolved: true
         http_config:
           # Optional: Add authentication
@@ -170,7 +170,7 @@ For multi-project setups, use project-specific webhook endpoints.
 ### Endpoint
 
 ```
-POST http://localhost:8004/webhooks/{integration_type}/{integration_id}
+POST http://localhost:8504/webhooks/{integration_type}/{integration_id}
 ```
 
 ### Authentication
@@ -188,7 +188,7 @@ X-Webhook-Secret: <webhook-secret-from-integration>
 receivers:
   - name: 'project-production'
     webhook_configs:
-      - url: 'http://integration-service:8004/webhooks/prometheus/550e8400-e29b-41d4-a716-446655440000'
+      - url: 'http://integration-service:8504/webhooks/prometheus/550e8400-e29b-41d4-a716-446655440000'
         http_config:
           authorization:
             type: Bearer
@@ -202,7 +202,7 @@ receivers:
 ### Endpoint
 
 ```
-POST http://localhost:8004/webhooks/grafana/{integration_id}
+POST http://localhost:8504/webhooks/grafana/{integration_id}
 ```
 
 ### Payload Format
@@ -261,7 +261,7 @@ Grafana unified alerting sends:
 2. Add new contact point
 3. Select "Webhook" integration
 4. Configure:
-   - URL: `http://integration-service:8004/webhooks/grafana/{integration_id}`
+   - URL: `http://integration-service:8504/webhooks/grafana/{integration_id}`
    - HTTP Method: POST
    - Authorization Header: `Bearer <webhook-secret>`
 
@@ -338,7 +338,7 @@ if webhook_secret != integration.webhook_secret:
 
 ```bash
 # Test AlertManager webhook
-curl -X POST http://localhost:8004/webhooks/alertmanager \
+curl -X POST http://localhost:8504/webhooks/alertmanager \
   -H "Content-Type: application/json" \
   -d '{
     "version": "4",
@@ -365,7 +365,7 @@ curl -X POST http://localhost:8004/webhooks/alertmanager \
 ### Test Project-Specific Webhook
 
 ```bash
-curl -X POST "http://localhost:8004/webhooks/prometheus/{integration_id}" \
+curl -X POST "http://localhost:8504/webhooks/prometheus/{integration_id}" \
   -H "Content-Type: application/json" \
   -H "X-Webhook-Secret: your-webhook-secret" \
   -d '{...}'
@@ -378,7 +378,7 @@ curl -X POST "http://localhost:8004/webhooks/prometheus/{integration_id}" \
 ### Check Integration Service Health
 
 ```bash
-curl http://localhost:8004/health
+curl http://localhost:8504/health
 ```
 
 ### View Recent Webhook Activity

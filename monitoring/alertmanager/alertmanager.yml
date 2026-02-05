@@ -34,7 +34,7 @@ receivers:
   # SRE Copilot Webhook Receiver
   - name: 'sre-copilot-webhook'
     webhook_configs:
-      - url: 'http://integration-service:8004/webhooks/alertmanager/ca53f4ee-1f7b-45b5-9a0e-9bd6bef17c97'
+      - url: 'http://integration-service:8504/webhooks/alertmanager/ca53f4ee-1f7b-45b5-9a0e-9bd6bef17c97'
         send_resolved: false
 
   # Slack receiver (optional, uncomment and configure when needed)

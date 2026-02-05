@@ -106,7 +106,7 @@ To add more dashboards:
 
 AlertManager is configured to send alerts to:
 ```
-http://integration-service:8004/webhooks/alertmanager
+http://integration-service:8504/webhooks/alertmanager
 ```
 
 This creates incidents automatically in the SRE Copilot system.

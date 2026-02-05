@@ -23,7 +23,7 @@ SRE Copilot is a microservices-based AI-powered SRE platform designed for incide
             ┌──────────────┐                 ┌──────────────┐
             │   Frontend   │◀───WebSocket────│  WebSocket   │
             │   (React)    │                 │   Service    │
-            │   :5173      │                 │   :8005      │
+            │   :5173      │                 │   :8505      │
             └──────────────┘                 └──────────────┘
                     │                                 │
                     ▼                                 │
@@ -31,7 +31,7 @@ SRE Copilot is a microservices-based AI-powered SRE platform designed for incide
             │ API Gateway  │◀────────────────────────┘
             │ 🔒 Encrypted │
             │ 🚦 Rate Ltd  │
-            │   :8000      │
+            │   :8500      │
             └──────────────┘
                     │
     ┌───────────────┼───────────────┬──────────────┬──────────────┐
@@ -39,7 +39,7 @@ SRE Copilot is a microservices-based AI-powered SRE platform designed for incide
 ┌────────┐   ┌────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
 │  Auth  │   │  Incident  │  │    AI    │  │Integration│ │  Audit   │
 │Service │   │  Service   │  │ Service  │  │  Service  │ │  Service │
-│ :8001  │   │   :8002    │  │  :8003   │  │   :8004   │ │   :8008  │
+│ :8501  │   │   :8502    │  │  :8503   │  │   :8504   │ │   :8508  │
 └────────┘   └────────────┘  └──────────┘  └──────────┘  └──────────┘
                     │               │              │              │
     ┌───────────────┼───────────────┼──────────────┴──────────────┘
@@ -56,7 +56,7 @@ SRE Copilot is a microservices-based AI-powered SRE platform designed for incide
 
 ## Core Microservices
 
-### 1. API Gateway (:8000)
+### 1. API Gateway (:8500)
 
 **Purpose:** Central entry point for all API requests with routing, authentication verification, and cross-cutting concerns.
 
@@ -77,7 +77,7 @@ SRE Copilot is a microservices-based AI-powered SRE platform designed for incide
 
 ---
 
-### 2. Auth Service (:8001)
+### 2. Auth Service (:8501)
 
 **Purpose:** User authentication, authorization, tenant management, and project-based access control.
 
@@ -106,7 +106,7 @@ SRE Copilot is a microservices-based AI-powered SRE platform designed for incide
 
 ---
 
-### 3. Incident Service (:8002)
+### 3. Incident Service (:8502)
 
 **Purpose:** Incident lifecycle management, state machine, and hypothesis coordination.
 
@@ -138,7 +138,7 @@ DETECTED → ACKNOWLEDGED → INVESTIGATING → MITIGATED → RESOLVED → LEARN
 
 ---
 
-### 4. AI Service (:8003)
+### 4. AI Service (:8503)
 
 **Purpose:** AI-powered hypothesis generation and analytics using Azure OpenAI GPT-4o-mini.
 
@@ -168,7 +168,7 @@ DETECTED → ACKNOWLEDGED → INVESTIGATING → MITIGATED → RESOLVED → LEARN
 
 ---
 
-### 5. Integration Service (:8004)
+### 5. Integration Service (:8504)
 
 **Purpose:** External tool integrations (Prometheus, AlertManager, Grafana).
 
@@ -191,7 +191,7 @@ DETECTED → ACKNOWLEDGED → INVESTIGATING → MITIGATED → RESOLVED → LEARN
 
 ---
 
-### 6. WebSocket Service (:8005)
+### 6. WebSocket Service (:8505)
 
 **Purpose:** Real-time bidirectional communication for live updates.
 
@@ -218,7 +218,7 @@ DETECTED → ACKNOWLEDGED → INVESTIGATING → MITIGATED → RESOLVED → LEARN
 
 ---
 
-### 7. Audit Service (:8008)
+### 7. Audit Service (:8508)
 
 **Purpose:** Comprehensive audit logging for compliance and debugging.
 

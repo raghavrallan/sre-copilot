@@ -29,7 +29,7 @@ This document describes the data flow patterns in the SRE Copilot platform, from
 │                          INGESTION LAYER                                     │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────┐    │
-│  │                    Integration Service (:8004)                     │    │
+│  │                    Integration Service (:8504)                     │    │
 │  │                                                                    │    │
 │  │  • Webhook Receivers (AlertManager, Prometheus, Grafana)          │    │
 │  │  • Alert Normalization                                            │    │
@@ -44,7 +44,7 @@ This document describes the data flow patterns in the SRE Copilot platform, from
 │                         PROCESSING LAYER                                     │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────┐    │
-│  │                    Incident Service (:8002)                        │    │
+│  │                    Incident Service (:8502)                        │    │
 │  │                                                                    │    │
 │  │  • Incident Creation/Management                                   │    │
 │  │  • State Machine Transitions                                      │    │
@@ -54,7 +54,7 @@ This document describes the data flow patterns in the SRE Copilot platform, from
 │                                   │                                          │
 │                                   ▼                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐    │
-│  │                      AI Service (:8003)                            │    │
+│  │                      AI Service (:8503)                            │    │
 │  │                                                                    │    │
 │  │  • Hypothesis Generation (Azure OpenAI GPT-4o-mini)               │    │
 │  │  • Confidence Scoring                                             │    │
@@ -87,7 +87,7 @@ This document describes the data flow patterns in the SRE Copilot platform, from
 │                                                                              │
 │  ┌──────────────────┐  ┌──────────────────┐                                │
 │  │ WebSocket Service│  │  API Gateway     │                                │
-│  │     (:8005)      │  │    (:8000)       │                                │
+│  │     (:8505)      │  │    (:8500)       │                                │
 │  │                  │  │                  │                                │
 │  │  • Real-time     │  │  • REST API      │                                │
 │  │  • Live Updates  │  │  • Auth Proxy    │                                │
@@ -263,7 +263,7 @@ async def redis_subscriber():
 const { incidents } = useRealTimeIncidents();
 
 useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8005/ws');
+    const ws = new WebSocket('ws://localhost:8505/ws');
     
     ws.onmessage = (event) => {
         const message = JSON.parse(event.data);

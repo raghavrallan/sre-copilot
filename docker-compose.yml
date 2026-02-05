@@ -58,7 +58,7 @@ services:
       - INTEGRATION_SERVICE_URL=${INTEGRATION_SERVICE_URL}
       - ENVIRONMENT=development
     ports:
-      - "8080:8000"
+      - "8580:8500"
     depends_on:
       redis:
         condition: service_healthy
@@ -67,7 +67,7 @@ services:
     volumes:
       - ./services/api-gateway:/app
       - ./shared:/app/shared
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8500 --reload
 
   # Auth Service
   auth-service:
@@ -88,7 +88,7 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
       - MONITORING_ENCRYPTION_KEY=${MONITORING_ENCRYPTION_KEY}
     ports:
-      - "8001:8001"
+      - "8501:8501"
     depends_on:
       redis:
         condition: service_healthy
@@ -97,7 +97,7 @@ services:
     volumes:
       - ./services/auth-service:/app
       - ./shared:/app/shared
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8501 --reload
 
   # Incident Service
   incident-service:
@@ -117,7 +117,7 @@ services:
       - AI_INPUT_TOKEN_PRICE=${AI_INPUT_TOKEN_PRICE:-0.150}
       - AI_OUTPUT_TOKEN_PRICE=${AI_OUTPUT_TOKEN_PRICE:-0.600}
     ports:
-      - "8002:8002"
+      - "8502:8502"
     depends_on:
       redis:
         condition: service_healthy
@@ -126,7 +126,7 @@ services:
     volumes:
       - ./services/incident-service:/app
       - ./shared:/app/shared
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8502 --reload
 
   # AI Service
   ai-service:
@@ -149,7 +149,7 @@ services:
       - AI_INPUT_TOKEN_PRICE=${AI_INPUT_TOKEN_PRICE:-0.150}
       - AI_OUTPUT_TOKEN_PRICE=${AI_OUTPUT_TOKEN_PRICE:-0.600}
     ports:
-      - "8003:8003"
+      - "8503:8503"
     depends_on:
       redis:
         condition: service_healthy
@@ -158,7 +158,7 @@ services:
     volumes:
       - ./services/ai-service:/app
       - ./shared:/app/shared
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8503 --reload
 
   # Integration Service
   integration-service:
@@ -177,7 +177,7 @@ services:
       - MONITORING_ENCRYPTION_KEY=${MONITORING_ENCRYPTION_KEY}
       - INCIDENT_SERVICE_URL=${INCIDENT_SERVICE_URL}
     ports:
-      - "8004:8004"
+      - "8504:8504"
     depends_on:
       redis:
         condition: service_healthy
@@ -186,7 +186,7 @@ services:
     volumes:
       - ./services/integration-service:/app
       - ./shared:/app/shared
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8504 --reload
 
   # WebSocket Service (NEW)
   websocket-service:
@@ -199,7 +199,7 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
     ports:
-      - "8005:8005"
+      - "8505:8505"
     depends_on:
       redis:
         condition: service_healthy
@@ -207,7 +207,7 @@ services:
       - sre-network
     volumes:
       - ./services/websocket-service:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8505 --reload
 
   # Audit Service (NEW)
   audit-service:
@@ -224,7 +224,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
     ports:
-      - "8008:8008"
+      - "8508:8508"
     depends_on:
       redis:
         condition: service_healthy
@@ -232,7 +232,7 @@ services:
       - sre-network
     volumes:
       - ./services/audit-service:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8508 --reload
 
   # Frontend
   frontend:

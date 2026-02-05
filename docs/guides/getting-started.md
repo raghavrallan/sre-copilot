@@ -67,8 +67,8 @@ call_command('migrate')
 ### 4. Access the Application
 
 - **Frontend:** http://localhost:5173
-- **API Docs:** http://localhost:8000/docs
-- **Health Check:** http://localhost:8000/health
+- **API Docs:** http://localhost:8580/docs
+- **Health Check:** http://localhost:8580/health
 
 ---
 
@@ -77,14 +77,14 @@ call_command('migrate')
 | Service | URL | Description |
 |---------|-----|-------------|
 | Frontend | http://localhost:5173 | React UI |
-| API Gateway | http://localhost:8000 | Main API entry |
-| API Docs | http://localhost:8000/docs | Swagger UI |
-| Auth Service | http://localhost:8001 | Authentication |
-| Incident Service | http://localhost:8002 | Incident management |
-| AI Service | http://localhost:8003 | AI hypotheses |
-| Integration Service | http://localhost:8004 | Webhooks |
-| WebSocket Service | http://localhost:8005 | Real-time updates |
-| Audit Service | http://localhost:8008 | Audit logging |
+| API Gateway | http://localhost:8580 | Main API entry |
+| API Docs | http://localhost:8580/docs | Swagger UI |
+| Auth Service | http://localhost:8501 | Authentication |
+| Incident Service | http://localhost:8502 | Incident management |
+| AI Service | http://localhost:8503 | AI hypotheses |
+| Integration Service | http://localhost:8504 | Webhooks |
+| WebSocket Service | http://localhost:8505 | Real-time updates |
+| Audit Service | http://localhost:8508 | Audit logging |
 
 ---
 
@@ -140,7 +140,7 @@ You'll be automatically logged in and redirected to the dashboard.
    ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
    │ Auth   │ │Incident│ │   AI   │ │ Integ  │ │WebSocket│
    │Service │ │Service │ │Service │ │Service │ │Service │
-   │  :8001 │ │  :8002 │ │  :8003 │ │  :8004 │ │  :8005 │
+   │  :8501 │ │  :8502 │ │  :8503 │ │  :8504 │ │  :8505 │
    └───┬────┘ └───┬────┘ └────────┘ └────────┘ └────────┘
        │          │
        └────┬─────┘
@@ -235,7 +235,7 @@ docker-compose restart postgres
 
 ### Frontend can't connect to API
 
-1. Check API Gateway is running: http://localhost:8000/health
+1. Check API Gateway is running: http://localhost:8580/health
 2. Check browser console for CORS errors
 3. Verify `.env` has correct `VITE_API_GATEWAY_URL`
 
@@ -243,11 +243,11 @@ docker-compose restart postgres
 
 ```bash
 # Windows
-netstat -ano | findstr :8000
+netstat -ano | findstr :8580
 taskkill /PID <pid> /F
 
 # Linux/Mac
-lsof -ti:8000 | xargs kill -9
+lsof -ti:8580 | xargs kill -9
 ```
 
 ---
@@ -257,7 +257,7 @@ lsof -ti:8000 | xargs kill -9
 ### Register User
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
+curl -X POST http://localhost:8580/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
@@ -270,7 +270,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
 ### Login
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
+curl -X POST http://localhost:8580/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
@@ -283,7 +283,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 ```bash
 TOKEN="your-jwt-token-here"
 
-curl -X POST http://localhost:8000/api/v1/incidents \
+curl -X POST http://localhost:8580/api/v1/incidents \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -297,7 +297,7 @@ curl -X POST http://localhost:8000/api/v1/incidents \
 ### List Incidents
 
 ```bash
-curl -X GET http://localhost:8000/api/v1/incidents \
+curl -X GET http://localhost:8580/api/v1/incidents \
   -H "Authorization: Bearer $TOKEN"
 ```
 
