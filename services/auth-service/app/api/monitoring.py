@@ -153,7 +153,10 @@ async def test_prometheus_connection(url: str, username: str = None, password: s
         elif api_key:
             headers['Authorization'] = f"Bearer {api_key}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # Strip trailing slash to avoid double-slash in URL concatenation
+        url = url.rstrip('/')
+
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             # Test Prometheus API status endpoint
             response = await client.get(
                 f"{url}/api/v1/status/config",
@@ -209,7 +212,10 @@ async def test_grafana_connection(url: str, username: str = None, password: str 
         elif username and password:
             auth = httpx.BasicAuth(username, password)
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # Strip trailing slash to avoid double-slash in URL concatenation
+        url = url.rstrip('/')
+
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             # Test Grafana API health endpoint
             response = await client.get(
                 f"{url}/api/health",
@@ -265,7 +271,10 @@ async def test_alertmanager_connection(url: str, username: str = None, password:
         elif api_key:
             headers['Authorization'] = f"Bearer {api_key}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # Strip trailing slash to avoid double-slash in URL concatenation
+        url = url.rstrip('/')
+
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             # Test AlertManager API status endpoint
             response = await client.get(
                 f"{url}/api/v2/status",
@@ -404,13 +413,13 @@ async def create_monitoring_integration(
                 existing_primary.is_primary = False
                 existing_primary.save()
 
-        # Create integration
+        # Create integration (normalize URL by stripping trailing slash)
         integration = MonitoringIntegration.objects.create(
             project=project,
             integration_type=data.integration_type,
             name=data.name,
             description=data.description,
-            url=str(data.url),
+            url=str(data.url).rstrip('/'),
             username=data.username,
             config=data.config or {},
             webhook_enabled=data.webhook_enabled,
@@ -530,7 +539,7 @@ async def update_monitoring_integration(
         if data.description is not None:
             integration.description = data.description
         if data.url is not None:
-            integration.url = str(data.url)
+            integration.url = str(data.url).rstrip('/')
         if data.username is not None:
             integration.username = data.username
         if data.password is not None:
