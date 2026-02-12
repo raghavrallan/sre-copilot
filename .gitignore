@@ -31,6 +31,8 @@ db.sqlite3-journal
 .env
 .env.local
 .env.*.local
+.env.production
+!.env.production.example
 
 # IDEs
 .vscode/
