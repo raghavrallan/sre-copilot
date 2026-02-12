@@ -237,57 +237,6 @@ docker-compose down
 
 ---
 
-## Development Roadmap
-
-### ✅ Phase 0: Planning (Complete)
-- [x] Architecture design
-- [x] Tech stack selection
-- [x] Data model design
-- [x] Sprint planning
-- [x] Documentation
-
-### 🚧 Phase 1: Intelligence Layer (In Progress)
-
-#### Sprint 1: Foundation (Weeks 1-4)
-- [ ] Multi-tenant database setup
-- [ ] Azure AD authentication
-- [ ] Prometheus integration
-- [ ] PagerDuty webhook receiver
-- [ ] Claude API integration
-- [ ] Context assembly engine
-
-#### Sprint 2: Core Engine (Weeks 5-8)
-- [ ] Hypothesis confidence scoring
-- [ ] Evidence aggregator
-- [ ] Slack bot (basic)
-- [ ] Incident state machine
-- [ ] Incident timeline
-
-#### Sprint 3: Features (Weeks 9-12)
-- [ ] Runbook semantic search (Pinecone)
-- [ ] RCA assistant
-- [ ] Post-mortem auto-generation
-- [ ] Natural language queries
-
-#### Sprint 4: Polish (Weeks 13-16)
-- [ ] UI/UX improvements
-- [ ] Performance optimization
-- [ ] Beta customer deployment
-- [ ] Documentation polish
-
-### 📅 Phase 2: Predictive Layer (Months 5-9)
-- Anomaly detection
-- Predictive alerting
-- Alert correlation
-- Capacity forecasting
-
-### 📅 Phase 3: Autonomous Layer (Months 10-15)
-- Autonomous remediation
-- Cost optimization
-- Infrastructure drift correction
-- Self-healing workflows
-
----
 
 ## Contributing
 
