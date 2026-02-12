@@ -10,6 +10,14 @@ from app.core.config import settings
 router = APIRouter()
 
 
+def get_internal_headers() -> dict:
+    """Get headers for internal service-to-service requests"""
+    headers = {}
+    if settings.INTERNAL_SERVICE_KEY:
+        headers["X-Internal-Service-Key"] = settings.INTERNAL_SERVICE_KEY
+    return headers
+
+
 def forward_response_cookies(source_response: httpx.Response, target_response: Response):
     """Forward cookies from backend service to client"""
     if 'set-cookie' in source_response.headers:
@@ -128,15 +136,16 @@ async def switch_project(
 
 
 @router.get("/auth/me")
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_current_user(request: Request, authorization: Optional[str] = Header(None)):
     """Proxy to auth service - get current user"""
-    if not authorization:
+    token = get_token_from_request(request, authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AUTH_SERVICE_URL}/me",
-            headers={"Authorization": authorization}
+            headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Failed to get user info')
@@ -450,7 +459,8 @@ async def list_incidents(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents",
-            params=params
+            params=params,
+            headers=get_internal_headers()
         )
         return response.json()
 
@@ -466,7 +476,8 @@ async def get_incidents_stats(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents-stats",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         return response.json()
 
@@ -483,7 +494,8 @@ async def get_incidents_timeline(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents-timeline",
-            params={"project_id": user["project_id"], "days": days}
+            params={"project_id": user["project_id"], "days": days},
+            headers=get_internal_headers()
         )
         return response.json()
 
@@ -503,7 +515,8 @@ async def create_incident(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
             f"{settings.INCIDENT_SERVICE_URL}/incidents",
-            json=body
+            json=body,
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -523,7 +536,8 @@ async def get_incident(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -543,7 +557,8 @@ async def get_hypotheses(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/hypotheses",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -567,7 +582,8 @@ async def update_incident_state(
         response = await client.patch(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/state",
             params={"project_id": user["project_id"]},
-            json=body
+            json=body,
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -591,7 +607,8 @@ async def update_incident_severity(
         response = await client.patch(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/severity",
             params={"project_id": user["project_id"]},
-            json=body
+            json=body,
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -615,7 +632,8 @@ async def add_incident_comment(
         response = await client.post(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/comments",
             params={"project_id": user["project_id"]},
-            json=body
+            json=body,
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -635,7 +653,8 @@ async def get_incident_activities(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/activities",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -655,7 +674,8 @@ async def get_incident_workflow(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/workflow",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -675,7 +695,8 @@ async def get_incident_metrics(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.INCIDENT_SERVICE_URL}/incidents/{incident_id}/metrics",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -695,7 +716,8 @@ async def get_analytics_token_usage(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AI_SERVICE_URL}/analytics/token-usage",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -715,7 +737,8 @@ async def get_analytics_cost_summary(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AI_SERVICE_URL}/analytics/cost-summary",
-            params={"days": days, "project_id": user["project_id"]}
+            params={"days": days, "project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')
@@ -735,7 +758,8 @@ async def get_analytics_incident_metrics(
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AI_SERVICE_URL}/analytics/incident-metrics/{incident_id}",
-            params={"project_id": user["project_id"]}
+            params={"project_id": user["project_id"]},
+            headers=get_internal_headers()
         )
         if response.status_code != 200:
             error_message = get_error_message(response, 'Request failed')

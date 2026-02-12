@@ -1,11 +1,13 @@
 """
 Webhook endpoints for receiving alerts from external systems
 """
+import logging
 from fastapi import APIRouter, HTTPException, Request, Header
 from typing import List, Optional
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from asgiref.sync import sync_to_async
-import json
 import sys
 import os
 
@@ -35,7 +37,7 @@ def get_monitoring_integration(integration_id: str):
         integration = MonitoringIntegration.objects.select_related('project').get(id=integration_id)
         return integration
     except Exception as e:
-        print(f"Error getting monitoring integration: {e}")
+        logger.warning("Error getting monitoring integration: %s", e)
         return None
 
 
@@ -61,7 +63,7 @@ def store_monitoring_alert(integration_id: str, alert_data: dict, incident_id: s
         )
         return alert
     except Exception as e:
-        print(f"Error storing monitoring alert: {e}")
+        logger.warning("Error storing monitoring alert: %s", e)
         return None
 
 
@@ -174,7 +176,7 @@ async def process_alertmanager_webhook(body: dict, integration_id: str, project_
     for alert in webhook.alerts:
         # Only create incidents for firing alerts
         if alert.status != "firing":
-            print(f"Skipping resolved alert: {alert.labels.alertname}")
+            logger.info("Skipping resolved alert: %s", alert.labels.alertname)
             continue
 
         # Extract alert details
@@ -191,7 +193,7 @@ async def process_alertmanager_webhook(body: dict, integration_id: str, project_
         if alert.generatorURL:
             full_description += f"\n\nPrometheus: {alert.generatorURL}"
 
-        print(f"Creating incident for alert: {alertname} ({severity}) in project {project_id}")
+        logger.info("Creating incident for alert: %s (%s) in project %s", alertname, severity, project_id)
 
         incident = await incident_client.create_incident(
             title=title,
@@ -204,7 +206,7 @@ async def process_alertmanager_webhook(body: dict, integration_id: str, project_
         if incident:
             incident_id = incident["id"]
             created_incidents.append(incident_id)
-            print(f"✅ Created incident {incident_id} for alert {alertname}")
+            logger.info("Created incident %s for alert %s", incident_id, alertname)
 
             # Store alert in database
             alert_data = {
@@ -222,7 +224,7 @@ async def process_alertmanager_webhook(body: dict, integration_id: str, project_
             }
             await store_monitoring_alert(integration_id, alert_data, incident_id)
         else:
-            print(f"❌ Failed to create incident for alert {alertname}")
+            logger.warning("Failed to create incident for alert %s", alertname)
 
     return {
         "status": "success",
@@ -244,7 +246,7 @@ async def process_grafana_webhook(body: dict, integration_id: str, project_id: s
     for alert in webhook.alerts:
         # Only create incidents for alerting state
         if alert.state != "alerting":
-            print(f"Skipping non-alerting alert: {alert.title}")
+            logger.info("Skipping non-alerting alert: %s", alert.title)
             continue
 
         # Extract alert details
@@ -256,7 +258,7 @@ async def process_grafana_webhook(body: dict, integration_id: str, project_id: s
             dashboard_url = f"http://grafana:3000/d/{webhook.dashboardId}?panelId={webhook.panelId}"
             description += f"\n\nGrafana Dashboard: {dashboard_url}"
 
-        print(f"Creating incident for Grafana alert: {alert.title} in project {project_id}")
+        logger.info("Creating incident for Grafana alert: %s in project %s", alert.title, project_id)
 
         # Grafana doesn't always provide service info, use default
         service_name = "grafana-monitored-service"
@@ -272,7 +274,7 @@ async def process_grafana_webhook(body: dict, integration_id: str, project_id: s
         if incident:
             incident_id = incident["id"]
             created_incidents.append(incident_id)
-            print(f"✅ Created incident {incident_id} for Grafana alert {alert.title}")
+            logger.info("Created incident %s for Grafana alert %s", incident_id, alert.title)
 
             # Store alert in database
             alert_data = {
@@ -290,7 +292,7 @@ async def process_grafana_webhook(body: dict, integration_id: str, project_id: s
             }
             await store_monitoring_alert(integration_id, alert_data, incident_id)
         else:
-            print(f"❌ Failed to create incident for Grafana alert {alert.title}")
+            logger.warning("Failed to create incident for Grafana alert %s", alert.title)
 
     return {
         "status": "success",
@@ -363,17 +365,3 @@ async def grafana_webhook_legacy(webhook: GrafanaWebhook):
     )
 
 
-@router.post("/webhooks/test")
-async def test_webhook(request: Request):
-    """
-    Test endpoint to receive any webhook payload for debugging
-    """
-    body = await request.json()
-    print(f"Received test webhook:")
-    print(json.dumps(body, indent=2))
-
-    return {
-        "status": "success",
-        "message": "Test webhook received",
-        "payload": body
-    }

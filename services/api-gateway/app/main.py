@@ -1,12 +1,15 @@
 """
 API Gateway - Main entry point for all requests
 """
+import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Add shared to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
@@ -43,7 +46,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
-        "http://frontend:5173"
+        "http://frontend:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -64,12 +67,25 @@ app.include_router(proxy.router, prefix="/api/v1", tags=["API"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler"""
+    """Global exception handler - never leak internal details to clients"""
+    import logging
+    logger = logging.getLogger("api_gateway")
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+
+    # Only include error details in development mode
+    if settings.ENVIRONMENT == "development":
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": str(exc),
+                "type": type(exc).__name__
+            }
+        )
+
     return JSONResponse(
         status_code=500,
         content={
-            "detail": str(exc),
-            "type": type(exc).__name__
+            "detail": "Internal server error"
         }
     )
 
@@ -77,16 +93,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def startup_event():
     """Startup event"""
-    print("🚀 API Gateway starting up...")
-    print(f"Environment: {settings.ENVIRONMENT}")
-    print(f"Auth Service: {settings.AUTH_SERVICE_URL}")
-    print(f"Incident Service: {settings.INCIDENT_SERVICE_URL}")
+    logger.info("API Gateway starting up")
+    logger.info("Environment: %s", settings.ENVIRONMENT)
+    logger.info("Auth Service: %s", settings.AUTH_SERVICE_URL)
+    logger.info("Incident Service: %s", settings.INCIDENT_SERVICE_URL)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event"""
-    print("👋 API Gateway shutting down...")
+    logger.info("API Gateway shutting down")
 
 
 @app.get("/")

@@ -1,9 +1,14 @@
 """
 Incident endpoints
 """
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
-from typing import List, Optional
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from shared.utils.internal_auth import verify_internal_auth
+
+logger = logging.getLogger(__name__)
+from pydantic import BaseModel, Field
+from typing import List, Optional, Literal
 from datetime import datetime
 from django.utils import timezone
 import httpx
@@ -20,13 +25,14 @@ router = APIRouter()
 
 # Service URLs from environment
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:8503")
+INTERNAL_SERVICE_KEY = os.getenv("INTERNAL_SERVICE_KEY", "")
 
 
 class CreateIncidentRequest(BaseModel):
-    title: str
-    description: Optional[str] = ""
-    service_name: str
-    severity: str = "medium"
+    title: str = Field(..., max_length=200)
+    description: Optional[str] = Field("", max_length=5000)
+    service_name: str = Field(..., max_length=100)
+    severity: Literal["critical", "high", "medium", "low"] = "medium"
     project_id: str
 
 
@@ -66,7 +72,7 @@ class HypothesisResponse(BaseModel):
 
 
 class UpdateStateRequest(BaseModel):
-    state: str
+    state: Literal["open", "investigating", "acknowledged", "mitigated", "resolved", "closed"]
     comment: Optional[str] = None
     user_id: Optional[str] = None
     user_name: Optional[str] = None
@@ -74,7 +80,7 @@ class UpdateStateRequest(BaseModel):
 
 
 class AddCommentRequest(BaseModel):
-    content: str
+    content: str = Field(..., max_length=5000)
     user_id: Optional[str] = None
     user_name: Optional[str] = None
     user_email: Optional[str] = None
@@ -97,7 +103,7 @@ class ActivityResponse(BaseModel):
 
 
 class UpdateSeverityRequest(BaseModel):
-    severity: str
+    severity: Literal["critical", "high", "medium", "low"]
     comment: Optional[str] = None
     user_id: Optional[str] = None
     user_name: Optional[str] = None
@@ -106,6 +112,7 @@ class UpdateSeverityRequest(BaseModel):
 
 @router.get("/incidents", response_model=PaginatedIncidentsResponse)
 async def list_incidents(
+    _auth: bool = Depends(verify_internal_auth),
     project_id: str = Query(...),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -166,7 +173,7 @@ async def list_incidents(
 
 
 @router.post("/incidents", response_model=IncidentResponse)
-async def create_incident(request: CreateIncidentRequest):
+async def create_incident(request: CreateIncidentRequest, _auth: bool = Depends(verify_internal_auth)):
     """Create a new incident and start full analysis workflow"""
     # Verify project exists
     try:
@@ -212,6 +219,9 @@ async def create_incident(request: CreateIncidentRequest):
 
     # Trigger AI hypothesis generation (async, don't wait)
     try:
+        headers = {}
+        if INTERNAL_SERVICE_KEY:
+            headers["X-Internal-Service-Key"] = INTERNAL_SERVICE_KEY
         async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(
                 f"{AI_SERVICE_URL}/generate-hypotheses",
@@ -220,10 +230,11 @@ async def create_incident(request: CreateIncidentRequest):
                     "title": incident.title,
                     "description": incident.description,
                     "service_name": incident.service_name
-                }
+                },
+                headers=headers
             )
     except Exception as e:
-        print(f"Failed to generate hypotheses: {e}")
+        logger.warning("Failed to generate hypotheses: %s", e)
         # Don't fail the request if AI service is down
 
     # Prepare response
@@ -254,7 +265,7 @@ async def create_incident(request: CreateIncidentRequest):
             tenant_id=str(project.tenant.id)
         )
     except Exception as e:
-        print(f"Failed to publish incident.created event: {e}")
+        logger.warning("Failed to publish incident.created event: %s", e)
 
     return incident_response
 
@@ -262,7 +273,8 @@ async def create_incident(request: CreateIncidentRequest):
 @router.get("/incidents/{incident_id}", response_model=IncidentResponse)
 async def get_incident(
     incident_id: str,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get a specific incident"""
     try:
@@ -287,7 +299,8 @@ async def get_incident(
 
 @router.get("/incidents-stats")
 async def get_incident_stats(
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get incident statistics for dashboard"""
     # Verify project exists
@@ -330,7 +343,8 @@ async def get_incident_stats(
 @router.get("/incidents-timeline")
 async def get_incident_timeline(
     project_id: str = Query(...),
-    days: int = Query(7, ge=1, le=365)
+    days: int = Query(7, ge=1, le=365),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get incident counts grouped by day for timeline chart"""
     from datetime import timedelta
@@ -385,7 +399,8 @@ async def get_incident_timeline(
 @router.get("/incidents/{incident_id}/hypotheses", response_model=List[HypothesisResponse])
 async def get_hypotheses(
     incident_id: str,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get hypotheses for an incident"""
     # Verify incident exists and belongs to project
@@ -417,7 +432,8 @@ async def get_hypotheses(
 async def update_incident_state(
     incident_id: str,
     request: UpdateStateRequest,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Update incident state with optional comment"""
     # Verify incident exists and belongs to project
@@ -471,7 +487,7 @@ async def update_incident_state(
             tenant_id=str(incident.project.tenant_id)
         )
     except Exception as e:
-        print(f"Failed to publish incident.updated event: {e}")
+        logger.warning("Failed to publish incident.updated event: %s", e)
 
     return {"status": "success", "incident_id": str(incident.id), "new_state": request.state}
 
@@ -480,7 +496,8 @@ async def update_incident_state(
 async def update_incident_severity(
     incident_id: str,
     request: UpdateSeverityRequest,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Update incident severity with optional comment"""
     try:
@@ -519,8 +536,8 @@ async def update_incident_severity(
             },
             tenant_id=str(incident.project.tenant_id)
         )
-    except Exception as e:
-        print(f"Failed to publish incident.updated event: {e}")
+        except Exception as e:
+            logger.warning("Failed to publish incident.updated event: %s", e)
 
     return {"status": "success", "incident_id": str(incident.id), "new_severity": request.severity}
 
@@ -529,7 +546,8 @@ async def update_incident_severity(
 async def add_comment(
     incident_id: str,
     request: AddCommentRequest,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Add a comment to an incident"""
     try:
@@ -566,7 +584,8 @@ async def add_comment(
 @router.get("/incidents/{incident_id}/activities", response_model=List[ActivityResponse])
 async def get_incident_activities(
     incident_id: str,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get activity timeline for an incident"""
     try:

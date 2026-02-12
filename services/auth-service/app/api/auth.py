@@ -1,8 +1,9 @@
 """
 Authentication endpoints
 """
+import re
 from fastapi import APIRouter, HTTPException, Header, Response, Cookie
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from django.utils import timezone
 import uuid
@@ -16,6 +17,7 @@ from app.core.security import (
     create_refresh_token,
     verify_token,
     set_auth_cookies,
+    set_access_token_cookie,
     clear_auth_cookies,
     TOKEN_TYPE_REFRESH
 )
@@ -42,6 +44,21 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: str
     tenant_name: str
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -221,6 +238,7 @@ async def login(request: LoginRequest, response: Response):
 @router.post("/switch-project")
 async def switch_project(
     project_id: str,
+    response: Response,
     authorization: Optional[str] = Header(None)
 ):
     """Switch to a different project - returns new JWT"""
@@ -267,6 +285,9 @@ async def switch_project(
             "project_role": membership.role
         }
     )
+
+    # Set new access_token in httpOnly cookie
+    set_access_token_cookie(response, new_token)
 
     return {
         "access_token": new_token,

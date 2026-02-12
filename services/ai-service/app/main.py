@@ -2,7 +2,6 @@
 AI Service - Hypothesis generation and AI operations
 """
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import os
 import sys
 
@@ -21,15 +20,6 @@ app = FastAPI(
     title="SRE Copilot AI Service",
     description="AI and Hypothesis Generation Service",
     version="1.0.0"
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Include routers

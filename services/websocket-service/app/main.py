@@ -1,15 +1,19 @@
 """
 WebSocket Service - Real-time bidirectional communication
 """
+import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import json
 import asyncio
+
+logger = logging.getLogger(__name__)
 from typing import Dict, Set
 from datetime import datetime
 
 from app.websocket.connection_manager import ConnectionManager
+
+from shared.utils.internal_auth import verify_internal_auth
 from app.websocket.redis_pubsub import RedisPubSub
 from app.core.auth import verify_token
 
@@ -17,15 +21,6 @@ app = FastAPI(
     title="WebSocket Service",
     description="Real-time bidirectional communication for SRE Copilot",
     version="2.0.0"
-)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Global connection manager
@@ -36,17 +31,17 @@ redis_pubsub = RedisPubSub()
 @app.on_event("startup")
 async def startup_event():
     """Initialize Redis pub/sub on startup"""
-    print("🚀 WebSocket Service starting up...")
+    logger.info("WebSocket Service starting up")
     await redis_pubsub.connect()
     # Start listening to Redis pub/sub
     asyncio.create_task(redis_pubsub.listen(connection_manager))
-    print("✅ WebSocket Service ready!")
+    logger.info("WebSocket Service ready")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    print("👋 WebSocket Service shutting down...")
+    logger.info("WebSocket Service shutting down")
     await redis_pubsub.disconnect()
     await connection_manager.disconnect_all()
 
@@ -63,7 +58,7 @@ async def health_check():
 
 
 @app.get("/stats")
-async def get_stats():
+async def get_stats(_auth: bool = Depends(verify_internal_auth)):
     """Get WebSocket connection statistics"""
     return {
         "total_connections": connection_manager.get_connection_count(),
@@ -149,7 +144,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
             "timestamp": datetime.utcnow().isoformat()
         })
 
-        print(f"✅ Client {client_id} connected (tenant: {tenant_id})")
+        logger.info("Client %s connected (tenant: %s)", client_id, tenant_id)
 
         # Listen for messages
         while True:
@@ -164,7 +159,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
                     "message": "Invalid JSON format"
                 })
             except Exception as e:
-                print(f"❌ Error processing message from {client_id}: {e}")
+                logger.error("Error processing message from %s: %s", client_id, e)
                 await websocket.send_json({
                     "type": "error",
                     "message": f"Error processing message: {str(e)}"
@@ -179,11 +174,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"❌ WebSocket error: {e}")
+        logger.error("WebSocket error: %s", e)
     finally:
         if client_id:
             await connection_manager.disconnect(client_id)
-            print(f"👋 Client {client_id} disconnected")
+            logger.info("Client %s disconnected", client_id)
 
 
 async def handle_client_message(websocket: WebSocket, client_id: str, tenant_id: str, data: dict):

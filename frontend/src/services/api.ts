@@ -96,6 +96,13 @@ api.interceptors.response.use(
       }
     }
 
+    // Handle 403 Forbidden
+    if (error.response?.status === 403) {
+      console.warn('Access forbidden - insufficient permissions')
+      window.location.href = '/'
+      return Promise.reject(error)
+    }
+
     return Promise.reject(error)
   }
 )

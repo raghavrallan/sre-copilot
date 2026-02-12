@@ -9,13 +9,6 @@ export default function ProjectSwitcher() {
   const [loading, setLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Debug logging
-  useEffect(() => {
-    console.log('ProjectSwitcher - currentProject:', currentProject)
-    console.log('ProjectSwitcher - projects:', projects)
-    console.log('ProjectSwitcher - projects.length:', projects?.length)
-  }, [currentProject, projects])
-
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

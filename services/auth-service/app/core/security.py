@@ -97,6 +97,19 @@ def set_auth_cookies(response, access_token: str, refresh_token: str):
     )
 
 
+def set_access_token_cookie(response, access_token: str):
+    """Set only the access_token cookie (e.g. for switch-project)"""
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
+    )
+
+
 def clear_auth_cookies(response):
     """Clear authentication cookies"""
     response.delete_cookie(key="access_token", path="/")

@@ -25,7 +25,7 @@ class EncryptionManager:
         """
         self.master_key = master_key or os.getenv(
             "ENCRYPTION_MASTER_KEY",
-            "change-this-master-key-in-production"
+            ""
         )
         # Session keys cache: key_id -> (key, expiry)
         self.session_keys: Dict[str, tuple] = {}
@@ -177,3 +177,22 @@ class EncryptionManager:
 
 # Global encryption manager instance
 encryption_manager = EncryptionManager()
+
+# Validate critical secrets at startup
+_PLACEHOLDER_SECRETS = {"your-secret-key-change-in-production", "change-this-master-key-in-production", ""}
+
+def validate_encryption_secrets():
+    """Validate that critical secrets are properly configured"""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    master_key = os.getenv("ENCRYPTION_MASTER_KEY", "")
+    environment = os.getenv("ENVIRONMENT", "development")
+
+    if master_key in _PLACEHOLDER_SECRETS:
+        if environment == "production":
+            raise ValueError("ENCRYPTION_MASTER_KEY must be set to a secure value in production")
+        else:
+            logger.warning("WARNING: ENCRYPTION_MASTER_KEY is using a placeholder value. Set a secure value for production.")
+
+validate_encryption_secrets()
