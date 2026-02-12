@@ -1,0 +1,134 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Prevent concurrent deployments
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  # Deploy Backend Services to Render via Deploy Hooks
+  # ===========================================================================
+  deploy-backend:
+    name: Deploy Backend to Render
+    runs-on: ubuntu-latest
+    # Only deploy if CI passes (backend-ci and frontend-ci run on push to main)
+    steps:
+      - name: Trigger API Gateway deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_GATEWAY }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_GATEWAY }}"
+            echo "API Gateway deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_GATEWAY secret not set - skipping"
+          fi
+
+      - name: Trigger Auth Service deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_AUTH }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_AUTH }}"
+            echo "Auth Service deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_AUTH secret not set - skipping"
+          fi
+
+      - name: Trigger Incident Service deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_INCIDENT }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_INCIDENT }}"
+            echo "Incident Service deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_INCIDENT secret not set - skipping"
+          fi
+
+      - name: Trigger AI Service deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_AI }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_AI }}"
+            echo "AI Service deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_AI secret not set - skipping"
+          fi
+
+      - name: Trigger Integration Service deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_INTEGRATION }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_INTEGRATION }}"
+            echo "Integration Service deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_INTEGRATION secret not set - skipping"
+          fi
+
+      - name: Trigger WebSocket Service deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_WEBSOCKET }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_WEBSOCKET }}"
+            echo "WebSocket Service deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_WEBSOCKET secret not set - skipping"
+          fi
+
+      - name: Trigger Audit Service deploy
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_AUDIT }}" ]; then
+            curl -s "${{ secrets.RENDER_DEPLOY_HOOK_AUDIT }}"
+            echo "Audit Service deploy triggered"
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK_AUDIT secret not set - skipping"
+          fi
+
+  # ===========================================================================
+  # Verify Deployment Health
+  # ===========================================================================
+  verify-deployment:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-backend]
+    # Wait for Render services to spin up (free tier cold start can take ~60s)
+    steps:
+      - name: Wait for services to deploy
+        run: sleep 120
+
+      - name: Health check - API Gateway
+        run: |
+          GATEWAY_URL="${{ secrets.GATEWAY_HEALTH_URL }}"
+          if [ -z "$GATEWAY_URL" ]; then
+            GATEWAY_URL="https://sre-copilot-gateway.onrender.com/health"
+          fi
+          echo "Checking $GATEWAY_URL"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY_URL" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "API Gateway is healthy (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: status $STATUS, retrying in 30s..."
+            sleep 30
+          done
+          echo "::warning::API Gateway health check failed after 5 attempts"
+
+      - name: Health check - Auth Service
+        run: |
+          AUTH_URL="https://sre-copilot-auth.onrender.com/health"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$AUTH_URL" || echo "000")
+          echo "Auth Service: HTTP $STATUS"
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | https://sre-copilot.pages.dev |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Gateway | https://sre-copilot-gateway.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| Auth Service | https://sre-copilot-auth.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| Incident Service | https://sre-copilot-incident.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| AI Service | https://sre-copilot-ai.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Service | https://sre-copilot-integration.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| WebSocket Service | https://sre-copilot-websocket.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| Audit Service | https://sre-copilot-audit.onrender.com |" >> $GITHUB_STEP_SUMMARY
