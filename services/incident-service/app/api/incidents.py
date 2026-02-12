@@ -536,8 +536,8 @@ async def update_incident_severity(
             },
             tenant_id=str(incident.project.tenant_id)
         )
-        except Exception as e:
-            logger.warning("Failed to publish incident.updated event: %s", e)
+    except Exception as e:
+        logger.warning("Failed to publish incident.updated event: %s", e)
 
     return {"status": "success", "incident_id": str(incident.id), "new_severity": request.severity}
 
