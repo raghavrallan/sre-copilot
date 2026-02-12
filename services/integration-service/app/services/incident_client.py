@@ -7,6 +7,14 @@ from typing import Optional
 
 
 INCIDENT_SERVICE_URL = os.getenv("INCIDENT_SERVICE_URL", "http://incident-service:8502")
+INTERNAL_SERVICE_KEY = os.getenv("INTERNAL_SERVICE_KEY", "")
+
+
+def _get_internal_headers() -> dict:
+    """Get headers for internal service-to-service requests"""
+    if INTERNAL_SERVICE_KEY:
+        return {"X-Internal-Service-Key": INTERNAL_SERVICE_KEY}
+    return {}
 
 
 class IncidentClient:
@@ -46,7 +54,8 @@ class IncidentClient:
                         "service_name": service_name,
                         "severity": severity,
                         "project_id": project_id
-                    }
+                    },
+                    headers=_get_internal_headers()
                 )
                 response.raise_for_status()
                 return response.json()

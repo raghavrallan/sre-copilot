@@ -2,7 +2,8 @@
 Audit Service - Comprehensive audit logging and compliance
 """
 from fastapi import FastAPI, HTTPException, Depends, Query
-from fastapi.middleware.cors import CORSMiddleware
+
+from shared.utils.internal_auth import verify_internal_auth
 from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
@@ -12,15 +13,6 @@ app = FastAPI(
     title="Audit Service",
     description="Comprehensive audit logging for compliance and security",
     version="2.0.0"
-)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # In-memory audit log storage (use database in production)
@@ -89,7 +81,7 @@ async def health_check():
 
 
 @app.post("/audit-logs", response_model=AuditLog)
-async def create_audit_log(log: AuditLogCreate):
+async def create_audit_log(log: AuditLogCreate, _auth: bool = Depends(verify_internal_auth)):
     """
     Create a new audit log entry
 
@@ -110,6 +102,7 @@ async def create_audit_log(log: AuditLogCreate):
 
 @app.get("/audit-logs", response_model=List[dict])
 async def get_audit_logs(
+    _auth: bool = Depends(verify_internal_auth),
     tenant_id: str = Query(..., description="Tenant ID for filtering"),
     user_id: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
@@ -177,7 +170,7 @@ async def get_audit_logs(
 
 
 @app.get("/audit-logs/{log_id}")
-async def get_audit_log(log_id: str, tenant_id: str = Query(...)):
+async def get_audit_log(log_id: str, tenant_id: str = Query(...), _auth: bool = Depends(verify_internal_auth)):
     """Get specific audit log by ID"""
     log = next((log for log in audit_logs if log.get("id") == log_id and log.get("tenant_id") == tenant_id), None)
 
@@ -191,6 +184,7 @@ async def get_audit_log(log_id: str, tenant_id: str = Query(...)):
 async def get_user_activity(
     user_id: str,
     tenant_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth),
     limit: int = Query(50, ge=1, le=500)
 ):
     """Get recent activity for a specific user"""
@@ -213,7 +207,8 @@ async def get_user_activity(
 async def get_resource_history(
     resource_type: str,
     resource_id: str,
-    tenant_id: str = Query(...)
+    tenant_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get complete history for a specific resource"""
     resource_logs = [
@@ -237,7 +232,8 @@ async def get_resource_history(
 @app.get("/audit-logs/stats")
 async def get_audit_stats(
     tenant_id: str = Query(...),
-    days: int = Query(7, ge=1, le=90)
+    days: int = Query(7, ge=1, le=90),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """Get audit statistics for the tenant"""
     cutoff_date = datetime.utcnow() - timedelta(days=days)
@@ -286,7 +282,8 @@ async def get_audit_stats(
 @app.delete("/audit-logs/cleanup")
 async def cleanup_old_logs(
     tenant_id: str = Query(...),
-    days_to_keep: int = Query(365, ge=30, le=3650)
+    days_to_keep: int = Query(365, ge=30, le=3650),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """
     Cleanup audit logs older than specified days

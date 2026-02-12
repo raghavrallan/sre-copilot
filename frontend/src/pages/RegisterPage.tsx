@@ -3,6 +3,20 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../lib/stores/auth-store'
 import api from '../services/api'
 
+function getPasswordStrength(password: string): { score: number; label: string; color: string } {
+  let score = 0
+  if (password.length >= 8) score++
+  if (/[A-Z]/.test(password)) score++
+  if (/[a-z]/.test(password)) score++
+  if (/\d/.test(password)) score++
+  if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) score++
+
+  if (score <= 2) return { score, label: 'Weak', color: 'bg-red-500' }
+  if (score <= 3) return { score, label: 'Fair', color: 'bg-yellow-500' }
+  if (score <= 4) return { score, label: 'Good', color: 'bg-blue-500' }
+  return { score, label: 'Strong', color: 'bg-green-500' }
+}
+
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
     email: '',
@@ -25,9 +39,7 @@ export default function RegisterPage() {
       const response = await api.post('/api/v1/auth/register', formData)
       const { access_token, user, projects } = response.data
 
-      // Store access_token in cookie for WebSocket authentication
-      document.cookie = `access_token=${access_token}; path=/; SameSite=Lax`
-
+      // Token is set via httpOnly cookie by backend (auth-service) - no document.cookie
       login(access_token, user, projects || [])
       navigate('/')
     } catch (err: any) {
@@ -139,6 +151,29 @@ export default function RegisterPage() {
                 value={formData.password}
                 onChange={handleChange}
               />
+              {formData.password && (
+                <div className="mt-1">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className={`h-1 flex-1 rounded ${
+                          i <= getPasswordStrength(formData.password).score
+                            ? getPasswordStrength(formData.password).color
+                            : 'bg-gray-200 dark:bg-gray-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className={`text-xs mt-0.5 ${
+                    getPasswordStrength(formData.password).score <= 2 ? 'text-red-500' :
+                    getPasswordStrength(formData.password).score <= 3 ? 'text-yellow-500' :
+                    getPasswordStrength(formData.password).score <= 4 ? 'text-blue-500' : 'text-green-500'
+                  }`}>
+                    {getPasswordStrength(formData.password).label}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

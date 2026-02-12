@@ -1,7 +1,9 @@
 """
 Workflow endpoints for incident analysis tracking
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from shared.utils.internal_auth import verify_internal_auth
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -22,7 +24,8 @@ router = APIRouter()
 @router.get("/incidents/{incident_id}/workflow")
 async def get_incident_workflow(
     incident_id: str,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """
     Get the complete analysis workflow for an incident
@@ -94,7 +97,8 @@ async def get_incident_workflow(
 @router.get("/incidents/{incident_id}/metrics")
 async def get_incident_metrics(
     incident_id: str,
-    project_id: str = Query(...)
+    project_id: str = Query(...),
+    _auth: bool = Depends(verify_internal_auth)
 ):
     """
     Get comprehensive metrics for an incident

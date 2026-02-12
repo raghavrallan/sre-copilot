@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:8500",
-        "http://frontend:5173"
+        "http://frontend:3000"
     ]
 
     # Database (uses environment variable from docker-compose)
@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     # Timeouts
     SERVICE_TIMEOUT: int = 30
+
+    # Internal service auth (shared secret for gateway-to-backend requests)
+    INTERNAL_SERVICE_KEY: str = ""
 
     class Config:
         env_file = ".env"

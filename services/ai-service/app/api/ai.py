@@ -1,7 +1,12 @@
 """
 AI endpoints for hypothesis generation
 """
-from fastapi import APIRouter, HTTPException
+import logging
+from fastapi import APIRouter, Depends, HTTPException
+
+from shared.utils.internal_auth import verify_internal_auth
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from typing import List, Optional
 import os
@@ -88,12 +93,12 @@ async def generate_hypotheses_real(title: str, description: str, service_name: s
     try:
         from openai import AsyncAzureOpenAI
 
-        print(f"🤖 Initializing Azure OpenAI client...")
-        print(f"   Endpoint: {AZURE_OPENAI_ENDPOINT}")
-        print(f"   Deployment: {AZURE_OPENAI_DEPLOYMENT}")
-        print(f"   Model: {AZURE_OPENAI_MODEL}")
-        print(f"   API Version: {AZURE_OPENAI_API_VERSION}")
-        print(f"   API Key: {'*' * 20}{AZURE_OPENAI_API_KEY[-4:] if AZURE_OPENAI_API_KEY else 'NOT SET'}")
+        logger.info("Initializing Azure OpenAI client")
+        logger.info("Endpoint: %s", AZURE_OPENAI_ENDPOINT)
+        logger.info("Deployment: %s", AZURE_OPENAI_DEPLOYMENT)
+        logger.info("Model: %s", AZURE_OPENAI_MODEL)
+        logger.info("API Version: %s", AZURE_OPENAI_API_VERSION)
+        logger.info("API Key: [CONFIGURED]" if AZURE_OPENAI_API_KEY else "API Key: NOT SET")
 
         # Initialize Azure OpenAI client
         client = AsyncAzureOpenAI(
@@ -113,7 +118,7 @@ Format: {{"hypotheses":[{{"claim":"one sentence hypothesis","description":"brief
 
 Focus on common SRE issues: resource exhaustion, config errors, dependency failures, deployment issues, external API problems."""
 
-        print(f"📤 Sending request to Azure OpenAI GPT-4o-mini...")
+        logger.info("Sending request to Azure OpenAI GPT-4o-mini")
 
         # Call Azure OpenAI GPT-4o-mini
         # OPTIMIZED: Reduced max_completion_tokens from 2000 to 800 (60% reduction)
@@ -129,24 +134,24 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
             )
             duration_ms = int((time.time() - start_time) * 1000)
         except Exception as e:
-            print(f"❌ API call failed: {e}")
+            logger.error("API call failed: %s", e)
             raise
 
-        print(f"📥 Received response from Azure OpenAI")
-        print(f"   Response type: {type(response)}")
-        print(f"   Choices count: {len(response.choices) if response.choices else 0}")
+        logger.info("Received response from Azure OpenAI")
+        logger.info("Response type: %s", type(response))
+        logger.info("Choices count: %s", len(response.choices) if response.choices else 0)
 
         # Parse JSON response
         if not response.choices or len(response.choices) == 0:
-            print("❌ No choices in response")
+            logger.error("No choices in response")
             raise ValueError("No choices in response")
 
         content = response.choices[0].message.content
-        print(f"📄 Response content length: {len(content) if content else 0}")
-        print(f"📄 Response content (first 500 chars): {content[:500] if content else 'EMPTY'}")
+        logger.info("Response content length: %s", len(content) if content else 0)
+        logger.debug("Response content (first 500 chars): %s", content[:500] if content else "EMPTY")
 
         if not content or content.strip() == "":
-            print("❌ Empty response from Azure OpenAI")
+            logger.error("Empty response from Azure OpenAI")
             raise ValueError("Empty response from Azure OpenAI")
 
         # Clean markdown formatting from response (```json ... ```)
@@ -164,14 +169,14 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
         # Try to parse JSON
         try:
             result = json.loads(cleaned_content)
-            print(f"✅ Successfully parsed JSON response")
+            logger.info("Successfully parsed JSON response")
         except json.JSONDecodeError as je:
-            print(f"❌ JSON parse error: {je}")
-            print(f"   Content: {cleaned_content}")
+            logger.error("JSON parse error: %s", je)
+            logger.debug("Content: %s", cleaned_content)
             raise
 
         hypotheses_data = result.get("hypotheses", [])
-        print(f"📊 Extracted {len(hypotheses_data)} hypotheses")
+        logger.info("Extracted %s hypotheses", len(hypotheses_data))
 
         # Convert to HypothesisCandidate objects
         candidates = []
@@ -184,10 +189,10 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
             ))
 
         if len(candidates) == 0:
-            print("⚠️  No hypotheses generated, using mock")
+            logger.warning("No hypotheses generated, using mock")
             return await generate_hypotheses_mock(title, description, service_name)
 
-        print(f"✅ Successfully generated {len(candidates)} hypotheses")
+        logger.info("Successfully generated %s hypotheses", len(candidates))
 
         # Return candidates along with token usage
         return {
@@ -201,9 +206,8 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
         }
 
     except Exception as e:
-        print(f"❌ Azure OpenAI API error: {e}, falling back to mock")
-        import traceback
-        traceback.print_exc()
+        logger.error("Azure OpenAI API error: %s, falling back to mock", e)
+        logger.exception("Traceback for Azure OpenAI error")
         mock_result = await generate_hypotheses_mock(title, description, service_name)
         return {
             "candidates": mock_result,
@@ -217,7 +221,7 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
 
 
 @router.post("/generate-hypotheses")
-async def generate_hypotheses(request: GenerateHypothesesRequest):
+async def generate_hypotheses(request: GenerateHypothesesRequest, _auth: bool = Depends(verify_internal_auth)):
     """
     Generate hypotheses for an incident with caching and token tracking
 
@@ -236,7 +240,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
     # OPTIMIZATION 1: Check if hypotheses already exist in database (cache)
     existing_count = await Hypothesis.objects.filter(incident=incident).acount()
     if existing_count > 0:
-        print(f"✅ Cache hit: {existing_count} hypotheses already exist for incident {request.incident_id}")
+        logger.info("Cache hit: %s hypotheses already exist for incident %s", existing_count, request.incident_id)
         existing_hypotheses = []
         async for hypothesis in Hypothesis.objects.filter(incident=incident).order_by('rank'):
             existing_hypotheses.append({
@@ -256,7 +260,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
     # OPTIMIZATION 2: Use Redis lock to prevent duplicate concurrent requests
     lock_key = f"ai:generating:{request.incident_id}"
     if redis_client.exists(lock_key):
-        print(f"⚠️  Another request is already generating hypotheses for incident {request.incident_id}")
+        logger.warning("Another request is already generating hypotheses for incident %s", request.incident_id)
         raise HTTPException(status_code=409, detail="Hypothesis generation already in progress for this incident")
 
     # Set lock with 60 second TTL
@@ -280,12 +284,12 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
             # Use sync_to_async for the start() method which calls save()
             await sync_to_async(analysis_step.start)()
         except Exception as e:
-            print(f"Warning: Could not create analysis step: {e}")
+            logger.warning("Could not create analysis step: %s", e)
             analysis_step = None
 
         # Generate hypotheses
         if USE_MOCK:
-            print(f"Using MOCK hypothesis generation (no Azure OpenAI API key)")
+            logger.info("Using MOCK hypothesis generation (no Azure OpenAI API key)")
             mock_candidates = await generate_hypotheses_mock(
                 request.title,
                 request.description,
@@ -301,7 +305,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
                 }
             }
         else:
-            print(f"Using Azure OpenAI GPT-4o-mini for hypothesis generation")
+            logger.info("Using Azure OpenAI GPT-4o-mini for hypothesis generation")
             result = await generate_hypotheses_real(
                 request.title,
                 request.description,
@@ -344,7 +348,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
                     tenant_id=str(incident.tenant_id)
                 )
             except Exception as e:
-                print(f"Failed to publish hypothesis.generated event: {e}")
+                logger.warning("Failed to publish hypothesis.generated event: %s", e)
 
         # OPTIMIZATION 3: Track token usage and cost
         if not USE_MOCK:
@@ -358,7 +362,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
                 prompt_summary=f"Generate hypotheses for: {request.title[:100]}",
                 response_summary=f"Generated {len(saved_hypotheses)} hypotheses"
             )
-            print(f"💰 Token usage: {usage['input_tokens']} input + {usage['output_tokens']} output = {usage['total_tokens']} total")
+            logger.info("Token usage: %s input + %s output = %s total", usage['input_tokens'], usage['output_tokens'], usage['total_tokens'])
 
             # Update analysis step with token info (if enabled)
             if analysis_step:
@@ -393,7 +397,7 @@ async def generate_hypotheses(request: GenerateHypothesesRequest):
 
 
 @router.post("/generate-hypotheses-batch")
-async def generate_hypotheses_batch(incidents: List[GenerateHypothesesRequest]):
+async def generate_hypotheses_batch(incidents: List[GenerateHypothesesRequest], _auth: bool = Depends(verify_internal_auth)):
     """
     Generate hypotheses for multiple incidents in a single batch
 
@@ -599,9 +603,9 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
         #     response_summary=f"Generated hypotheses for {len(results)} incidents"
         # )
 
-        print(f"💰 Batch token usage: {usage['input_tokens']} input + {usage['output_tokens']} output = {usage['total_tokens']} total")
+        logger.info("Batch token usage: %s input + %s output = %s total", usage['input_tokens'], usage['output_tokens'], usage['total_tokens'])
         cost_per_incident = (usage['input_tokens']*AI_INPUT_TOKEN_PRICE/1000000 + usage['output_tokens']*AI_OUTPUT_TOKEN_PRICE/1000000) / len(incidents_to_process)
-        print(f"📊 Cost per incident: ${cost_per_incident:.6f}")
+        logger.info("Cost per incident: $%.6f", cost_per_incident)
 
         return {
             "batch_size": len(incidents),
@@ -614,7 +618,7 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
         }
 
     except Exception as e:
-        print(f"❌ Batch processing failed: {e}")
+        logger.error("Batch processing failed: %s", e)
         # Fall back to individual processing
         results = []
         for incident_request, incident in incidents_to_process:
@@ -639,7 +643,7 @@ Focus on common SRE issues: resource exhaustion, config errors, dependency failu
 
 
 @router.get("/status")
-async def ai_status():
+async def ai_status(_auth: bool = Depends(verify_internal_auth)):
     """Get AI service status"""
     return {
         "status": "operational",

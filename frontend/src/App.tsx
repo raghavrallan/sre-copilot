@@ -17,6 +17,21 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />
 }
 
+function RoleProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+  const { isAuthenticated, currentProject } = useAuthStore()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />
+  }
+
+  const userRole = currentProject?.role
+  if (userRole && !allowedRoles.includes(userRole)) {
+    return <Navigate to="/" />
+  }
+
+  return <>{children}</>
+}
+
 function App() {
   return (
     <WebSocketProvider>
@@ -61,7 +76,7 @@ function App() {
           <Route path="incidents/:id" element={<IncidentDetailPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="status" element={<StatusPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings" element={<RoleProtectedRoute allowedRoles={['owner', 'admin', 'engineer']}><SettingsPage /></RoleProtectedRoute>} />
         </Route>
       </Routes>
     </WebSocketProvider>

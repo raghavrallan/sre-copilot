@@ -77,9 +77,42 @@ jobs:
       - name: Run black
         run: black --check services/
 
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install pip-audit bandit
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          pip-audit -r services/auth-service/requirements.txt || true
+          pip-audit -r services/incident-service/requirements.txt || true
+          pip-audit -r services/ai-service/requirements.txt || true
+
+      - name: Run Bandit (Python SAST)
+        run: |
+          bandit -r services/ -f json -o bandit-report.json --severity-level medium || true
+          bandit -r services/ --severity-level high
+
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
   build-docker-images:
     runs-on: ubuntu-latest
-    needs: [test-auth-service, test-incident-service, lint]
+    needs: [test-auth-service, test-incident-service, lint, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
