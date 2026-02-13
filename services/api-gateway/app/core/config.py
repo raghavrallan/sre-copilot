@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     INCIDENT_SERVICE_URL: str = "http://incident-service:8502"
     AI_SERVICE_URL: str = "http://ai-service:8503"
     INTEGRATION_SERVICE_URL: str = "http://integration-service:8504"
+    METRICS_COLLECTOR_URL: str = "http://metrics-collector-service:8509"
+    LOG_SERVICE_URL: str = "http://log-service:8510"
+    ALERTING_SERVICE_URL: str = "http://alerting-service:8511"
+    SYNTHETIC_SERVICE_URL: str = "http://synthetic-service:8512"
+    SECURITY_SERVICE_URL: str = "http://security-service:8513"
 
     # Timeouts
     SERVICE_TIMEOUT: int = 30

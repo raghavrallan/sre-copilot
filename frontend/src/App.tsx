@@ -8,8 +8,25 @@ import DashboardPage from './pages/DashboardPage'
 import IncidentsPage from './pages/IncidentsPage'
 import IncidentDetailPage from './pages/IncidentDetailPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import APMPage from './pages/APMPage'
+import APMServiceDetailPage from './pages/APMServiceDetailPage'
+import InfrastructurePage from './pages/InfrastructurePage'
+import ServiceMapPage from './pages/ServiceMapPage'
+import SLOsPage from './pages/SLOsPage'
+import DashboardsPage from './pages/DashboardsPage'
+import DashboardEditorPage from './pages/DashboardEditorPage'
+import AlertsPage from './pages/AlertsPage'
+import SyntheticsPage from './pages/SyntheticsPage'
+import DeploymentsPage from './pages/DeploymentsPage'
+import BrowserMonitoringPage from './pages/BrowserMonitoringPage'
+import SecurityPage from './pages/SecurityPage'
 import SettingsPage from './pages/SettingsPage'
 import StatusPage from './pages/StatusPage'
+import LogsPage from './pages/LogsPage'
+import ErrorsPage from './pages/ErrorsPage'
+import ErrorGroupDetailPage from './pages/ErrorGroupDetailPage'
+import TracingPage from './pages/TracingPage'
+import TraceDetailPage from './pages/TraceDetailPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -75,7 +92,25 @@ function App() {
           <Route path="incidents" element={<IncidentsPage />} />
           <Route path="incidents/:id" element={<IncidentDetailPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="apm" element={<APMPage />} />
+          <Route path="apm/:serviceName" element={<APMServiceDetailPage />} />
+          <Route path="infrastructure" element={<InfrastructurePage />} />
+          <Route path="service-map" element={<ServiceMapPage />} />
+          <Route path="slos" element={<SLOsPage />} />
+          <Route path="dashboards" element={<DashboardsPage />} />
+          <Route path="dashboards/new" element={<DashboardEditorPage />} />
+          <Route path="dashboards/:id" element={<DashboardEditorPage />} />
+          <Route path="alerts" element={<AlertsPage />} />
+          <Route path="synthetics" element={<SyntheticsPage />} />
+          <Route path="deployments" element={<DeploymentsPage />} />
+          <Route path="browser" element={<BrowserMonitoringPage />} />
+          <Route path="security" element={<SecurityPage />} />
           <Route path="status" element={<StatusPage />} />
+          <Route path="logs" element={<LogsPage />} />
+          <Route path="errors" element={<ErrorsPage />} />
+          <Route path="errors/:fingerprint" element={<ErrorGroupDetailPage />} />
+          <Route path="tracing" element={<TracingPage />} />
+          <Route path="tracing/:traceId" element={<TraceDetailPage />} />
           <Route path="settings" element={<RoleProtectedRoute allowedRoles={['owner', 'admin', 'engineer']}><SettingsPage /></RoleProtectedRoute>} />
         </Route>
       </Routes>

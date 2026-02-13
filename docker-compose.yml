@@ -57,6 +57,11 @@ services:
       - INCIDENT_SERVICE_URL=${INCIDENT_SERVICE_URL}
       - AI_SERVICE_URL=${AI_SERVICE_URL}
       - INTEGRATION_SERVICE_URL=${INTEGRATION_SERVICE_URL}
+      - METRICS_COLLECTOR_URL=http://metrics-collector-service:8509
+      - LOG_SERVICE_URL=http://log-service:8510
+      - ALERTING_SERVICE_URL=http://alerting-service:8511
+      - SYNTHETIC_SERVICE_URL=http://synthetic-service:8512
+      - SECURITY_SERVICE_URL=http://security-service:8513
       - ENVIRONMENT=development
     ports:
       - "8580:8500"
@@ -214,7 +219,113 @@ services:
       - backend-network
     volumes:
       - ./services/websocket-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8505 --reload
+
+  # Metrics Collector Service
+  metrics-collector-service:
+    build:
+      context: ./services/metrics-collector-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-metrics-collector
+    user: "0"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - ENVIRONMENT=development
+    expose:
+      - "8509"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/metrics-collector-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8509 --reload
+
+  # Log Service
+  log-service:
+    build:
+      context: ./services/log-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-log-service
+    user: "0"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - ENVIRONMENT=development
+    expose:
+      - "8510"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/log-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8510 --reload
+
+  # Alerting Service
+  alerting-service:
+    build:
+      context: ./services/alerting-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-alerting-service
+    user: "0"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - ENVIRONMENT=development
+    expose:
+      - "8511"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/alerting-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8511 --reload
+
+  # Synthetic Monitoring Service
+  synthetic-service:
+    build:
+      context: ./services/synthetic-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-synthetic-service
+    user: "0"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - ENVIRONMENT=development
+    expose:
+      - "8512"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/synthetic-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8512 --reload
+
+  # Security Service
+  security-service:
+    build:
+      context: ./services/security-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-security-service
+    user: "0"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - ENVIRONMENT=development
+    expose:
+      - "8513"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/security-service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8513 --reload
 
   # Audit Service (NEW)
   audit-service:

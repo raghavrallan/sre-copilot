@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Add shared to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 
-from app.api import health, proxy
+from app.api import health, proxy, observability_proxy
 from app.core.config import settings
 from app.middleware.encryption_middleware import EncryptionMiddleware, RateLimitMiddleware
 
@@ -70,6 +70,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["Health"])
 app.include_router(proxy.router, prefix="/api/v1", tags=["API"])
+app.include_router(observability_proxy.router, prefix="/api/v1", tags=["Observability"])
 
 
 @app.exception_handler(Exception)
