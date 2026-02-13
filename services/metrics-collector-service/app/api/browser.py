@@ -2,27 +2,20 @@
 Browser monitoring ingest endpoint - receives Web Vitals, errors, and timing from browser SDK
 """
 import logging
+from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter
+from asgiref.sync import sync_to_async
+from django.utils import timezone
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
-from app.services.demo_data import generate_demo_browser_data
+from shared.models.observability import BrowserEvent
+from shared.utils.responses import validate_project_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# In-memory store for browser events (append-only for now)
-browser_events: list[dict[str, Any]] = []
-
-_demo_browser_data: list[dict[str, Any]] = []
-
-
-def _ensure_browser_data():
-    global _demo_browser_data
-    if not browser_events and not _demo_browser_data:
-        _demo_browser_data = generate_demo_browser_data()
 
 
 class WebVitalsEvent(BaseModel):
@@ -62,7 +55,7 @@ class XhrEvent(BaseModel):
 
 
 class BrowserIngestPayload(BaseModel):
-    """Batch payload from browser SDK"""
+    """Batch payload from browser SDK - project_id and tenant_id injected by API gateway"""
     app_name: Optional[str] = None
     url: Optional[str] = None
     web_vitals: list[WebVitalsEvent] = []
@@ -72,108 +65,179 @@ class BrowserIngestPayload(BaseModel):
 
 
 @router.post("/ingest")
-async def ingest_browser(payload: BrowserIngestPayload) -> dict[str, Any]:
-    """Accept browser monitoring data from SDK."""
-    from datetime import datetime
-    ts = datetime.utcnow().isoformat() + "Z"
-    entry = {
-        "timestamp": ts,
-        "app_name": payload.app_name,
-        "url": payload.url,
-        "web_vitals": [v.model_dump() for v in payload.web_vitals],
-        "errors": [e.model_dump() for e in payload.errors],
-        "page_load": payload.page_load.model_dump() if payload.page_load else None,
-        "xhr_events": [x.model_dump() for x in payload.xhr_events],
-    }
-    browser_events.append(entry)
-    browser_events[:] = browser_events[-1000:]  # Keep last 1000 batches
-    logger.debug("Ingested browser batch: %d vitals, %d errors", len(payload.web_vitals), len(payload.errors))
-    return {"ingested": True, "events_count": len(payload.web_vitals) + len(payload.errors) + (1 if payload.page_load else 0) + len(payload.xhr_events)}
+async def ingest_browser(request: Request) -> dict[str, Any]:
+    """Accept browser monitoring data from SDK. project_id and tenant_id from body (injected by gateway)."""
+    body = await request.json()
+    project_id = body.get("project_id")
+    tenant_id = body.get("tenant_id")
+    if not project_id or not tenant_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="project_id and tenant_id are required (injected by API gateway)")
+
+    app_name = body.get("app_name", "")
+    url = body.get("url", "")
+    web_vitals = body.get("web_vitals", [])
+    errors = body.get("errors", [])
+    page_load = body.get("page_load")
+    xhr_events = body.get("xhr_events", [])
+
+    events_count = len(web_vitals) + len(errors) + (1 if page_load else 0) + len(xhr_events)
+
+    @sync_to_async
+    def _create():
+        BrowserEvent.objects.create(
+            project_id=project_id,
+            tenant_id=tenant_id,
+            app_name=app_name,
+            url=url,
+            web_vitals=web_vitals,
+            errors=errors,
+            page_load=page_load or {},
+            xhr_events=xhr_events,
+        )
+
+    await _create()
+    logger.debug("Ingested browser batch: %d vitals, %d errors", len(web_vitals), len(errors))
+    return {"ingested": True, "events_count": events_count}
 
 
 @router.get("/overview")
-async def get_browser_overview() -> dict[str, Any]:
+async def get_browser_overview(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
     """Get browser monitoring overview with Web Vitals averages."""
-    _ensure_browser_data()
-    data = browser_events if browser_events else _demo_browser_data
+    pid = project_id or request.headers.get("X-Project-ID")
+    validate_project_id(pid, source="query")
 
-    vitals_sum = {"LCP": [], "FID": [], "CLS": [], "FCP": [], "TTFB": []}
-    js_errors = 0
-    page_loads = 0
-    ajax_calls = 0
+    @sync_to_async
+    def _overview():
+        events = list(
+            BrowserEvent.objects.filter(project_id=pid)
+            .values("web_vitals", "errors", "page_load", "xhr_events")
+        )
+        vitals_sum = {"LCP": [], "FID": [], "CLS": [], "FCP": [], "TTFB": []}
+        js_errors = 0
+        page_loads = 0
+        ajax_calls = 0
+        for entry in events:
+            for v in entry.get("web_vitals", []):
+                name = v.get("name", "") if isinstance(v, dict) else getattr(v, "name", "")
+                if name in vitals_sum:
+                    val = v.get("value", 0) if isinstance(v, dict) else getattr(v, "value", 0)
+                    vitals_sum[name].append(val)
+            js_errors += len(entry.get("errors", []))
+            if entry.get("page_load"):
+                page_loads += 1
+            ajax_calls += len(entry.get("xhr_events", []))
+        web_vitals = {}
+        for name, values in vitals_sum.items():
+            if values:
+                web_vitals[name] = {"avg": round(sum(values) / len(values), 2), "count": len(values)}
+            else:
+                web_vitals[name] = {"avg": 0, "count": 0}
+        return {
+            "web_vitals": web_vitals,
+            "js_errors_total": js_errors,
+            "page_loads_total": page_loads,
+            "ajax_calls_total": ajax_calls,
+            "total_events": len(events),
+        }
 
-    for entry in data:
-        for v in entry.get("web_vitals", []):
-            name = v.get("name", "")
-            if name in vitals_sum:
-                vitals_sum[name].append(v.get("value", 0))
-        js_errors += len(entry.get("errors", []))
-        if entry.get("page_load"):
-            page_loads += 1
-        ajax_calls += len(entry.get("xhr_events", []))
-
-    web_vitals = {}
-    for name, values in vitals_sum.items():
-        if values:
-            web_vitals[name] = {"avg": round(sum(values) / len(values), 2), "count": len(values)}
-        else:
-            web_vitals[name] = {"avg": 0, "count": 0}
-
-    return {
-        "web_vitals": web_vitals,
-        "js_errors_total": js_errors,
-        "page_loads_total": page_loads,
-        "ajax_calls_total": ajax_calls,
-        "total_events": len(data),
-    }
+    return await _overview()
 
 
 @router.get("/page-loads")
-async def get_page_loads() -> list[dict[str, Any]]:
+async def get_page_loads(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> list[dict[str, Any]]:
     """Get page load timing data."""
-    _ensure_browser_data()
-    data = browser_events if browser_events else _demo_browser_data
+    pid = project_id or request.headers.get("X-Project-ID")
+    validate_project_id(pid, source="query")
 
-    result = []
-    for entry in data:
-        if entry.get("page_load"):
-            result.append({
-                "url": entry.get("url", "unknown"),
-                "timestamp": entry.get("timestamp", ""),
-                **entry["page_load"],
-            })
-    return result[:100]
+    @sync_to_async
+    def _list():
+        events = list(
+            BrowserEvent.objects.filter(project_id=pid)
+            .values("url", "timestamp", "page_load")
+            .order_by("-timestamp")[:200]
+        )
+        result = []
+        for e in events:
+            if e.get("page_load"):
+                ts = e.get("timestamp")
+                if isinstance(ts, datetime):
+                    ts = ts.isoformat() + "Z" if ts.tzinfo else ts.isoformat() + "Z"
+                result.append({
+                    "url": e.get("url", "unknown"),
+                    "timestamp": ts or "",
+                    **e["page_load"],
+                })
+        return result
+
+    return await _list()
 
 
 @router.get("/errors")
-async def get_browser_errors() -> list[dict[str, Any]]:
+async def get_browser_errors(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> list[dict[str, Any]]:
     """Get JS errors from browser."""
-    _ensure_browser_data()
-    data = browser_events if browser_events else _demo_browser_data
+    pid = project_id or request.headers.get("X-Project-ID")
+    validate_project_id(pid, source="query")
 
-    result = []
-    for entry in data:
-        for err in entry.get("errors", []):
-            result.append({
-                "url": entry.get("url", "unknown"),
-                "timestamp": entry.get("timestamp", ""),
-                **err,
-            })
-    return result[:100]
+    @sync_to_async
+    def _list():
+        events = list(
+            BrowserEvent.objects.filter(project_id=pid)
+            .values("url", "timestamp", "errors")
+            .order_by("-timestamp")[:100]
+        )
+        result = []
+        for entry in events:
+            ts = entry.get("timestamp")
+            if isinstance(ts, datetime):
+                ts = ts.isoformat() + "Z" if ts.tzinfo else ts.isoformat() + "Z"
+            for err in entry.get("errors", []):
+                result.append({
+                    "url": entry.get("url", "unknown"),
+                    "timestamp": ts or "",
+                    **err,
+                })
+        return result[:100]
+
+    return await _list()
 
 
 @router.get("/ajax")
-async def get_ajax_calls() -> list[dict[str, Any]]:
+async def get_ajax_calls(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> list[dict[str, Any]]:
     """Get AJAX/fetch timing data."""
-    _ensure_browser_data()
-    data = browser_events if browser_events else _demo_browser_data
+    pid = project_id or request.headers.get("X-Project-ID")
+    validate_project_id(pid, source="query")
 
-    result = []
-    for entry in data:
-        for xhr in entry.get("xhr_events", []):
-            result.append({
-                "page_url": entry.get("url", "unknown"),
-                "timestamp": entry.get("timestamp", ""),
-                **xhr,
-            })
-    return result[:100]
+    @sync_to_async
+    def _list():
+        events = list(
+            BrowserEvent.objects.filter(project_id=pid)
+            .values("url", "timestamp", "xhr_events")
+            .order_by("-timestamp")[:100]
+        )
+        result = []
+        for entry in events:
+            ts = entry.get("timestamp")
+            if isinstance(ts, datetime):
+                ts = ts.isoformat() + "Z" if ts.tzinfo else ts.isoformat() + "Z"
+            for xhr in entry.get("xhr_events", []):
+                result.append({
+                    "page_url": entry.get("url", "unknown"),
+                    "timestamp": ts or "",
+                    **xhr,
+                })
+        return result[:100]
+
+    return await _list()

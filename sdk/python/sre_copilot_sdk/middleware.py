@@ -1,4 +1,8 @@
-"""SRE Copilot FastAPI middleware - Auto-instruments every request."""
+"""SRE Copilot FastAPI middleware - Auto-instruments every request.
+
+When using the public API gateway, pass an api_key to SRECopilotClient for authentication.
+The middleware uses the client, so API key auth is applied automatically when configured.
+"""
 import logging
 import time
 from typing import List, Optional

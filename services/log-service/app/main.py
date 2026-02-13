@@ -2,12 +2,18 @@
 SRE Copilot Log Service - Log management microservice.
 """
 import logging
+import os
 import sys
+
+# Add shared to path and initialize Django BEFORE importing app modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+from shared.utils.database import setup_django
+setup_django()
 
 from fastapi import FastAPI
 
-from app.api.logs import router as logs_router, set_log_store
-from app.services.demo_data import _generate_demo_logs
+from shared.utils.responses import install_validation_handler
+from app.api.logs import router as logs_router
 
 # Configure logging
 logging.basicConfig(
@@ -26,6 +32,16 @@ app = FastAPI(
 # Include routers
 app.include_router(logs_router)
 
+# Install centralized 422->400 validation error handler
+install_validation_handler(app)
+
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
+
 
 @app.get("/health")
 async def health_check() -> dict:
@@ -35,9 +51,5 @@ async def health_check() -> dict:
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Startup event: load demo logs."""
+    """Startup event."""
     logger.info("Starting SRE Copilot Log Service...")
-    logs = _generate_demo_logs()
-    store = [log.model_dump() for log in logs]
-    set_log_store(store)
-    logger.info("Loaded %d demo log entries", len(store))

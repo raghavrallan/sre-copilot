@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment } from 'react'
 import { Shield, ChevronDown, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
 import api from '../services/api'
+import { useAuthStore } from '../lib/stores/auth-store'
 
 interface VulnerabilityApi {
   vuln_id: string
@@ -64,6 +65,7 @@ function mapApiToVuln(raw: VulnerabilityApi): Vulnerability {
 }
 
 export default function SecurityPage() {
+  const { currentProject } = useAuthStore()
   const [vulns, setVulns] = useState<Vulnerability[]>([])
   const [overview, setOverview] = useState<OverviewApi | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,6 +87,7 @@ export default function SecurityPage() {
   })
 
   useEffect(() => {
+    if (!currentProject?.id) return
     let cancelled = false
     async function fetch() {
       setLoading(true)
@@ -93,12 +96,15 @@ export default function SecurityPage() {
         const [vulnsRes, overviewRes] = await Promise.all([
           api.get<VulnerabilityApi[]>('/api/v1/security/vulnerabilities', {
             params: {
+              project_id: currentProject.id,
               ...(severityFilter && { severity: severityFilter }),
               ...(serviceFilter && { service: serviceFilter }),
               ...(statusFilter && { status: statusFilter === 'patched' ? 'resolved' : statusFilter }),
             },
           }),
-          api.get<OverviewApi>('/api/v1/security/vulnerabilities/overview'),
+          api.get<OverviewApi>('/api/v1/security/vulnerabilities/overview', {
+            params: { project_id: currentProject.id },
+          }),
         ])
         if (!cancelled) {
           setVulns((vulnsRes.data || []).map(mapApiToVuln))
@@ -117,13 +123,16 @@ export default function SecurityPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [severityFilter, serviceFilter, statusFilter])
+  }, [currentProject?.id, severityFilter, serviceFilter, statusFilter])
 
   const handleStatusChange = async (vulnId: string, newStatus: string) => {
+    if (!currentProject?.id) return
     const apiStatus = newStatus === 'patched' ? 'resolved' : newStatus
     setUpdatingStatus(vulnId)
     try {
-      await api.patch(`/api/v1/security/vulnerabilities/${vulnId}`, { status: apiStatus })
+      await api.patch(`/api/v1/security/vulnerabilities/${vulnId}`, { status: apiStatus }, {
+        params: { project_id: currentProject.id },
+      })
       setVulns((prev) =>
         prev.map((v) =>
           v.id === vulnId ? { ...v, status: mapStatus(apiStatus) } : v
@@ -175,6 +184,14 @@ export default function SecurityPage() {
     acc[v.service].push(v)
     return acc
   }, {})
+
+  if (!currentProject?.id) {
+    return (
+      <div className="px-4 sm:px-0 flex items-center justify-center min-h-[200px]">
+        <p className="text-gray-400">Select a project to view vulnerabilities</p>
+      </div>
+    )
+  }
 
   if (loading) {
     return (

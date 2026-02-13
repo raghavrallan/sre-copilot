@@ -12,7 +12,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { Server, Search, Cpu, HardDrive, Activity } from 'lucide-react'
+import { Server, Search, Cpu, HardDrive, Activity, Cloud } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import api from '../services/api'
 
 interface HostListItem {
@@ -248,10 +249,6 @@ export default function InfrastructurePage() {
             </div>
           ))}
         </div>
-      )}
-
-      {filteredHosts.length === 0 && !loading && (
-        <div className="py-12 text-center text-gray-500">No hosts found</div>
       )}
 
       {selectedHost && (

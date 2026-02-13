@@ -28,13 +28,15 @@ class SRECopilotClient:
 
     def __init__(
         self,
-        collector_url: str = "http://metrics-collector:8509",
+        collector_url: str = "http://localhost:8580/api/v1/ingest",
         service_name: str = "unknown",
         flush_interval: float = 10.0,
         batch_size: int = 100,
+        api_key: str = "",
     ) -> None:
         self.collector_url = collector_url.rstrip("/")
         self.service_name = service_name
+        self.api_key = api_key
         self.flush_interval = flush_interval
         self.batch_size = batch_size
         self._buffer: List[Dict[str, Any]] = []
@@ -162,10 +164,13 @@ class SRECopilotClient:
             return
         batch = self._buffer[: self.batch_size]
         self._buffer = self._buffer[self.batch_size :]
+        headers = {}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
-                    f"{self.collector_url}/metrics/ingest", json={"metrics": batch}
+                    f"{self.collector_url}/metrics", json={"metrics": batch}, headers=headers
                 )
         except Exception as e:
             logger.warning("Failed to flush metrics: %s", e)

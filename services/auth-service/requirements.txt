@@ -13,6 +13,7 @@ Django==5.0.1
 python-dotenv==1.0.0
 httpx==0.26.0
 cryptography==42.0.0
+prometheus-fastapi-instrumentator>=6.0.0
 
 # Testing
 pytest==7.4.4

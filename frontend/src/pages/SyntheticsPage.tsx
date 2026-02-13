@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAuthStore } from '../lib/stores/auth-store'
 import {
   LineChart,
   Line,
@@ -88,6 +89,7 @@ function mapResult(raw: ResultApi): Result {
 }
 
 export default function SyntheticsPage() {
+  const { currentProject } = useAuthStore()
   const [monitors, setMonitors] = useState<Monitor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -107,12 +109,15 @@ export default function SyntheticsPage() {
   })
 
   useEffect(() => {
+    if (!currentProject?.id) return
     let cancelled = false
     async function fetchMonitors() {
       setLoading(true)
       setError(null)
       try {
-        const { data } = await api.get<MonitorApi[]>('/api/v1/synthetics/monitors')
+        const { data } = await api.get<MonitorApi[]>('/api/v1/synthetics/monitors', {
+          params: { project_id: currentProject.id },
+        })
         if (!cancelled) {
           setMonitors((data || []).map(mapMonitor))
         }
@@ -132,10 +137,13 @@ export default function SyntheticsPage() {
   }, [])
 
   const fetchResults = async (monitorId: string) => {
+    if (!currentProject?.id) return
     setExpandedResultsLoading(true)
     setExpandedResults([])
     try {
-      const { data } = await api.get<{ items: ResultApi[] }>(`/api/v1/synthetics/monitors/${monitorId}/results`)
+      const { data } = await api.get<{ items: ResultApi[] }>(`/api/v1/synthetics/monitors/${monitorId}/results`, {
+        params: { project_id: currentProject.id },
+      })
       setExpandedResults((data?.items || []).map(mapResult))
     } catch {
       setExpandedResults([])
@@ -156,10 +164,12 @@ export default function SyntheticsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!currentProject?.id) return
     setCreateSubmitting(true)
     setCreateError(null)
     try {
       const payload = {
+        project_id: currentProject.id,
         name: createForm.name,
         type: createForm.type,
         url: createForm.url,
@@ -192,6 +202,14 @@ export default function SyntheticsPage() {
     .slice(0, 20)
     .reverse()
     .map((r, i) => ({ time: `${i}`, rt: r.responseTime }))
+
+  if (!currentProject?.id) {
+    return (
+      <div className="px-4 sm:px-0 flex items-center justify-center min-h-[200px]">
+        <p className="text-gray-400">Select a project to view synthetic monitors</p>
+      </div>
+    )
+  }
 
   if (loading) {
     return (

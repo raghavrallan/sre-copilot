@@ -2,8 +2,9 @@
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter
-from app.storage import active_alerts, alert_conditions
+from fastapi import APIRouter, HTTPException
+
+from app.storage import list_active_alerts, _get_project
 
 logger = logging.getLogger(__name__)
 
@@ -11,15 +12,11 @@ router = APIRouter(prefix="/active-alerts", tags=["Active Alerts"])
 
 
 @router.get("")
-async def list_active_alerts() -> List[Dict[str, Any]]:
-    """List all currently firing active alerts."""
-    result = []
-    cond_by_id = {c.get("condition_id"): c for c in alert_conditions if c.get("condition_id")}
-    for a in active_alerts:
-        cond = cond_by_id.get(a.get("condition_id", ""), {})
-        result.append({
-            **a,
-            "condition_name": cond.get("name", "Unknown"),
-            "service_name": cond.get("service_name", ""),
-        })
-    return result
+async def list_active_alerts_endpoint(project_id: str) -> List[Dict[str, Any]]:
+    """List all currently firing active alerts for a project."""
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return await list_active_alerts(project_id=str(project.id))

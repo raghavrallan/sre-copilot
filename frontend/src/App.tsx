@@ -22,6 +22,7 @@ import BrowserMonitoringPage from './pages/BrowserMonitoringPage'
 import SecurityPage from './pages/SecurityPage'
 import SettingsPage from './pages/SettingsPage'
 import StatusPage from './pages/StatusPage'
+import OnboardingPage from './pages/OnboardingPage'
 import LogsPage from './pages/LogsPage'
 import ErrorsPage from './pages/ErrorsPage'
 import ErrorGroupDetailPage from './pages/ErrorGroupDetailPage'
@@ -106,6 +107,7 @@ function App() {
           <Route path="browser" element={<BrowserMonitoringPage />} />
           <Route path="security" element={<SecurityPage />} />
           <Route path="status" element={<StatusPage />} />
+          <Route path="onboarding" element={<OnboardingPage />} />
           <Route path="logs" element={<LogsPage />} />
           <Route path="errors" element={<ErrorsPage />} />
           <Route path="errors/:fingerprint" element={<ErrorGroupDetailPage />} />

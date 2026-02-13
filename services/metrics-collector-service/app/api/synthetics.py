@@ -2,13 +2,16 @@
 Synthetic monitoring endpoints
 """
 import logging
+import uuid
+from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from asgiref.sync import sync_to_async
+from django.utils import timezone
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.storage import monitors
-from app.services.demo_data import generate_demo_monitors
+from shared.models.observability import SyntheticMonitor, SyntheticResult
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +19,15 @@ router = APIRouter()
 
 
 class CreateMonitorRequest(BaseModel):
-    """Create synthetic monitor request"""
+    """Create synthetic monitor request - project_id and tenant_id in body"""
     name: str
     type: str  # ping, api
     url: str
     frequency_seconds: int = 60
     assertions: list[str] = []
     enabled: bool = True
+    project_id: Optional[str] = None
+    tenant_id: Optional[str] = None
 
 
 class UpdateMonitorRequest(BaseModel):
@@ -34,98 +39,229 @@ class UpdateMonitorRequest(BaseModel):
     enabled: Optional[bool] = None
 
 
-def _ensure_monitors() -> None:
-    """Ensure we have demo monitors if storage is empty."""
-    if not monitors:
-        for m in generate_demo_monitors():
-            monitors[m["monitor_id"]] = m
-        logger.info("Generated demo monitors for empty storage")
-
-
 @router.post("/monitors")
-async def create_monitor(request: CreateMonitorRequest) -> dict[str, Any]:
-    """Create monitor."""
-    import uuid
-    if request.type not in ("ping", "api"):
+async def create_monitor(request: Request) -> dict[str, Any]:
+    """Create monitor. project_id and tenant_id from body."""
+    body = await request.json()
+    project_id = body.get("project_id")
+    tenant_id = body.get("tenant_id")
+    if not project_id or not tenant_id:
+        raise HTTPException(status_code=400, detail="project_id and tenant_id are required")
+
+    monitor_type = body.get("type", "")
+    if monitor_type not in ("ping", "api"):
         raise HTTPException(status_code=400, detail="Invalid type")
-    monitor_id = str(uuid.uuid4())
-    mon = {
-        "monitor_id": monitor_id,
-        "name": request.name,
-        "type": request.type,
-        "url": request.url,
-        "frequency_seconds": request.frequency_seconds,
-        "assertions": request.assertions,
-        "enabled": request.enabled,
-        "results_history": [],
-        "last_check": None,
-        "last_status": "unknown",
-    }
-    monitors[monitor_id] = mon
-    return mon
+
+    @sync_to_async
+    def _create():
+        mon = SyntheticMonitor.objects.create(
+            project_id=project_id,
+            tenant_id=tenant_id,
+            name=body.get("name", ""),
+            monitor_type=monitor_type,
+            url=body.get("url", ""),
+            frequency_seconds=int(body.get("frequency_seconds", 60)),
+            locations=[],
+            config={"assertions": body.get("assertions", [])},
+            is_enabled=body.get("enabled", True),
+            status="unknown",
+        )
+        return {
+            "monitor_id": str(mon.id),
+            "name": mon.name,
+            "type": mon.monitor_type,
+            "url": mon.url,
+            "frequency_seconds": mon.frequency_seconds,
+            "assertions": mon.config.get("assertions", []),
+            "enabled": mon.is_enabled,
+            "results_history": [],
+            "last_check": None,
+            "last_status": mon.status,
+        }
+
+    return await _create()
 
 
 @router.get("/monitors")
-async def list_monitors() -> list:
+async def list_monitors(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> list:
     """List monitors with latest status."""
-    _ensure_monitors()
-    return [
-        {
-            "monitor_id": m["monitor_id"],
-            "name": m["name"],
-            "type": m["type"],
-            "url": m["url"],
-            "enabled": m["enabled"],
-            "last_check": m.get("last_check"),
-            "last_status": m.get("last_status"),
-        }
-        for m in monitors.values()
-    ]
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _list():
+        monitors = list(
+            SyntheticMonitor.objects.filter(project_id=pid)
+            .values("id", "name", "monitor_type", "url", "is_enabled", "status", "last_check_at")
+        )
+        return [
+            {
+                "monitor_id": str(m["id"]),
+                "name": m["name"],
+                "type": m["monitor_type"],
+                "url": m["url"],
+                "enabled": m["is_enabled"],
+                "last_check": m["last_check_at"].isoformat() + "Z" if m["last_check_at"] and m["last_check_at"].tzinfo else (str(m["last_check_at"]) if m["last_check_at"] else None),
+                "last_status": m["status"],
+            }
+            for m in monitors
+        ]
+
+    return await _list()
 
 
 @router.get("/monitors/{monitor_id}/results")
-async def get_monitor_results(monitor_id: str) -> list:
+async def get_monitor_results(
+    monitor_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> list:
     """Results list for monitor."""
-    _ensure_monitors()
-    if monitor_id not in monitors:
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _get():
+        try:
+            mon = SyntheticMonitor.objects.get(project_id=pid, id=monitor_id)
+        except (SyntheticMonitor.DoesNotExist, ValueError):
+            return None
+        results = list(
+            SyntheticResult.objects.filter(monitor=mon)
+            .values("timestamp", "success", "response_time_ms", "status_code", "location", "error_message")
+            .order_by("-timestamp")[:100]
+        )
+        for r in results:
+            if isinstance(r.get("timestamp"), datetime):
+                r["timestamp"] = r["timestamp"].isoformat() + "Z" if r["timestamp"].tzinfo else r["timestamp"].isoformat() + "Z"
+        return results
+
+    result = await _get()
+    if result is None:
         raise HTTPException(status_code=404, detail="Monitor not found")
-    return monitors[monitor_id].get("results_history", [])
+    return result
 
 
 @router.get("/monitors/{monitor_id}")
-async def get_monitor(monitor_id: str) -> dict[str, Any]:
+async def get_monitor(
+    monitor_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
     """Monitor detail with results history."""
-    _ensure_monitors()
-    if monitor_id not in monitors:
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _get():
+        try:
+            mon = SyntheticMonitor.objects.get(project_id=pid, id=monitor_id)
+        except (SyntheticMonitor.DoesNotExist, ValueError):
+            return None
+        results = list(
+            SyntheticResult.objects.filter(monitor=mon)
+            .values("timestamp", "success", "response_time_ms", "status_code")
+            .order_by("-timestamp")[:100]
+        )
+        for r in results:
+            if isinstance(r.get("timestamp"), datetime):
+                r["timestamp"] = r["timestamp"].isoformat() + "Z" if r["timestamp"].tzinfo else r["timestamp"].isoformat() + "Z"
+        return {
+            "monitor_id": str(mon.id),
+            "name": mon.name,
+            "type": mon.monitor_type,
+            "url": mon.url,
+            "frequency_seconds": mon.frequency_seconds,
+            "assertions": mon.config.get("assertions", []),
+            "enabled": mon.is_enabled,
+            "results_history": results,
+            "last_check": mon.last_check_at.isoformat() + "Z" if mon.last_check_at and mon.last_check_at.tzinfo else (str(mon.last_check_at) if mon.last_check_at else None),
+            "last_status": mon.status,
+        }
+
+    result = await _get()
+    if result is None:
         raise HTTPException(status_code=404, detail="Monitor not found")
-    return monitors[monitor_id]
+    return result
 
 
 @router.put("/monitors/{monitor_id}")
-async def update_monitor(monitor_id: str, request: UpdateMonitorRequest) -> dict[str, Any]:
+async def update_monitor(
+    monitor_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
     """Update monitor."""
-    _ensure_monitors()
-    if monitor_id not in monitors:
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    body = await request.json()
+
+    @sync_to_async
+    def _update():
+        try:
+            mon = SyntheticMonitor.objects.get(project_id=pid, id=monitor_id)
+        except (SyntheticMonitor.DoesNotExist, ValueError):
+            return None
+        if body.get("name") is not None:
+            mon.name = body["name"]
+        if body.get("url") is not None:
+            mon.url = body["url"]
+        if body.get("frequency_seconds") is not None:
+            mon.frequency_seconds = body["frequency_seconds"]
+        if body.get("assertions") is not None:
+            cfg = dict(mon.config or {})
+            cfg["assertions"] = body["assertions"]
+            mon.config = cfg
+        if body.get("enabled") is not None:
+            mon.is_enabled = body["enabled"]
+        mon.save()
+        return {
+            "monitor_id": str(mon.id),
+            "name": mon.name,
+            "type": mon.monitor_type,
+            "url": mon.url,
+            "frequency_seconds": mon.frequency_seconds,
+            "assertions": mon.config.get("assertions", []),
+            "enabled": mon.is_enabled,
+            "results_history": [],
+            "last_check": mon.last_check_at.isoformat() + "Z" if mon.last_check_at and mon.last_check_at.tzinfo else (str(mon.last_check_at) if mon.last_check_at else None),
+            "last_status": mon.status,
+        }
+
+    result = await _update()
+    if result is None:
         raise HTTPException(status_code=404, detail="Monitor not found")
-    mon = monitors[monitor_id]
-    if request.name is not None:
-        mon["name"] = request.name
-    if request.url is not None:
-        mon["url"] = request.url
-    if request.frequency_seconds is not None:
-        mon["frequency_seconds"] = request.frequency_seconds
-    if request.assertions is not None:
-        mon["assertions"] = request.assertions
-    if request.enabled is not None:
-        mon["enabled"] = request.enabled
-    return mon
+    return result
 
 
 @router.delete("/monitors/{monitor_id}")
-async def delete_monitor(monitor_id: str) -> dict:
+async def delete_monitor(
+    monitor_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict:
     """Delete monitor."""
-    _ensure_monitors()
-    if monitor_id not in monitors:
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _delete():
+        try:
+            mon = SyntheticMonitor.objects.get(project_id=pid, id=monitor_id)
+            mon.delete()
+            return True
+        except (SyntheticMonitor.DoesNotExist, ValueError):
+            return False
+
+    if not await _delete():
         raise HTTPException(status_code=404, detail="Monitor not found")
-    del monitors[monitor_id]
     return {"status": "deleted", "monitor_id": monitor_id}

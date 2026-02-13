@@ -1,12 +1,16 @@
 """Muting rules API endpoints."""
 import logging
-import uuid
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.storage import muting_rules
+from app.storage import (
+    create_muting_rule,
+    list_muting_rules,
+    delete_muting_rule,
+    _get_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +20,7 @@ router = APIRouter(prefix="/muting-rules", tags=["Muting Rules"])
 # --- Pydantic models ---
 
 class CreateMutingRuleRequest(BaseModel):
+    project_id: str = Field(..., description="Project ID")
     name: str = Field(..., max_length=200)
     description: str = ""
     condition_ids: List[str] = Field(default_factory=list)
@@ -29,33 +34,49 @@ class CreateMutingRuleRequest(BaseModel):
 # --- Endpoints ---
 
 @router.post("")
-async def create_muting_rule(request: CreateMutingRuleRequest) -> dict:
-    rule = {
-        "rule_id": str(uuid.uuid4()),
-        "name": request.name,
-        "description": request.description,
-        "condition_ids": request.condition_ids,
-        "match_criteria": request.match_criteria,
-        "start_time": request.start_time,
-        "end_time": request.end_time,
-        "repeat": request.repeat,
-        "enabled": request.enabled,
-        "created_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
-    }
-    muting_rules.append(rule)
+async def create_muting_rule_endpoint(request: CreateMutingRuleRequest) -> dict:
+    """Create a new muting rule."""
+    try:
+        project = await _get_project(request.project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    data = request.model_dump(exclude={"project_id"})
+    rule = await create_muting_rule(
+        project_id=str(project.id),
+        tenant_id=str(project.tenant_id),
+        data=data,
+    )
     logger.info("Created muting rule: %s", rule["rule_id"])
     return rule
 
 
 @router.get("")
-async def list_muting_rules() -> List[dict]:
-    return muting_rules
+async def list_muting_rules_endpoint(project_id: str) -> List[dict]:
+    """List all muting rules for a project."""
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return await list_muting_rules(project_id=str(project.id))
 
 
 @router.delete("/{rule_id}")
-async def delete_muting_rule(rule_id: str) -> dict:
-    for i, rule in enumerate(muting_rules):
-        if rule["rule_id"] == rule_id:
-            muting_rules.pop(i)
-            return {"status": "deleted", "rule_id": rule_id}
-    raise HTTPException(status_code=404, detail="Muting rule not found")
+async def delete_muting_rule_endpoint(
+    rule_id: str,
+    project_id: str,
+) -> dict:
+    """Delete a muting rule."""
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    deleted = await delete_muting_rule(
+        project_id=str(project.id),
+        rule_id=rule_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Muting rule not found")
+    return {"status": "deleted", "rule_id": rule_id}

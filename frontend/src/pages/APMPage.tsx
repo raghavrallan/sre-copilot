@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Clock, AlertTriangle, Server, Database, ArrowRight, RefreshCw } from 'lucide-react'
+import { Activity, Clock, AlertTriangle, Server, Database, ArrowRight, RefreshCw, Terminal } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import api from '../services/api'
 
 interface APMService {
@@ -126,12 +127,14 @@ export default function APMPage() {
           </h1>
           <p className="text-sm text-gray-400 mt-2">Monitor application performance across services</p>
         </div>
-        <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-12 text-center">
-          <Server className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-300 mb-2">No services with APM data</h3>
-          <p className="text-gray-400">
-            Instrument your services with the SRE Copilot SDK to start collecting APM metrics.
-          </p>
+        <div className="bg-gray-800 rounded-lg border border-gray-700/50">
+          <EmptyState
+            icon={<Terminal size={32} />}
+            title="No services detected"
+            description="Install the Python SDK or infrastructure agent on your services to see APM data here."
+            actionLabel="Get Started"
+            actionHref="/onboarding"
+          />
         </div>
       </div>
     )

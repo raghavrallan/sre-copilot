@@ -62,6 +62,8 @@ services:
       - ALERTING_SERVICE_URL=http://alerting-service:8511
       - SYNTHETIC_SERVICE_URL=http://synthetic-service:8512
       - SECURITY_SERVICE_URL=http://security-service:8513
+      - CLOUD_CONNECTOR_URL=http://cloud-connector-service:8514
+      - CICD_CONNECTOR_URL=http://cicd-connector-service:8515
       - ENVIRONMENT=development
     ports:
       - "8580:8500"
@@ -207,15 +209,21 @@ services:
     container_name: sre-copilot-websocket-service
     user: "0"
     environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
-    expose:
-      - "8505"
+    ports:
+      - "8505:8505"
     depends_on:
       redis:
         condition: service_healthy
     networks:
+      - frontend-network
       - backend-network
     volumes:
       - ./services/websocket-service:/app
@@ -230,6 +238,11 @@ services:
     container_name: sre-copilot-metrics-collector
     user: "0"
     environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -241,6 +254,7 @@ services:
       - backend-network
     volumes:
       - ./services/metrics-collector-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8509 --reload
 
   # Log Service
@@ -251,6 +265,11 @@ services:
     container_name: sre-copilot-log-service
     user: "0"
     environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -262,6 +281,7 @@ services:
       - backend-network
     volumes:
       - ./services/log-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8510 --reload
 
   # Alerting Service
@@ -272,6 +292,12 @@ services:
     container_name: sre-copilot-alerting-service
     user: "0"
     environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -283,6 +309,7 @@ services:
       - backend-network
     volumes:
       - ./services/alerting-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8511 --reload
 
   # Synthetic Monitoring Service
@@ -293,6 +320,11 @@ services:
     container_name: sre-copilot-synthetic-service
     user: "0"
     environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -304,7 +336,64 @@ services:
       - backend-network
     volumes:
       - ./services/synthetic-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8512 --reload
+
+  # Cloud Connector Service
+  cloud-connector-service:
+    build:
+      context: ./services/cloud-connector-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-cloud-connector-service
+    user: "0"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-${MONITORING_ENCRYPTION_KEY}}
+    expose:
+      - "8514"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/cloud-connector-service:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8514 --reload
+
+  # CI/CD Connector Service
+  cicd-connector-service:
+    build:
+      context: ./services/cicd-connector-service
+      dockerfile: Dockerfile
+    container_name: sre-copilot-cicd-connector-service
+    user: "0"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-${MONITORING_ENCRYPTION_KEY}}
+    expose:
+      - "8515"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+    volumes:
+      - ./services/cicd-connector-service:/app
+      - ./shared:/app/shared
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8515 --reload
 
   # Security Service
   security-service:
@@ -314,6 +403,11 @@ services:
     container_name: sre-copilot-security-service
     user: "0"
     environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -325,6 +419,7 @@ services:
       - backend-network
     volumes:
       - ./services/security-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8513 --reload
 
   # Audit Service (NEW)
@@ -351,6 +446,7 @@ services:
       - backend-network
     volumes:
       - ./services/audit-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8508 --reload
 
   # Frontend

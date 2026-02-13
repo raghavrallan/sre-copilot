@@ -2,21 +2,21 @@
 Security vulnerability endpoints - ingest, list, update, overview, dependency tree.
 """
 import logging
+from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
+from asgiref.sync import sync_to_async
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.services.demo_data import generate_demo_vulnerabilities
+from shared.models.observability import Vulnerability as VulnerabilityModel
+from shared.models.project import Project
+from shared.utils.responses import validate_project_id, validate_uuid as _validate_uuid_shared
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Vulnerabilities"])
-
-# In-memory storage
-VULNERABILITIES: dict[str, dict[str, Any]] = {}
-DEPENDENCY_TREES: dict[str, dict[str, Any]] = {}  # service_name -> tree
 
 
 # Pydantic models
@@ -35,6 +35,7 @@ class VulnerabilityIngestItem(BaseModel):
 class VulnerabilityIngestRequest(BaseModel):
     """Ingest vulnerability scan results."""
 
+    project_id: str = Field(..., description="Project ID for scoping")
     source: str = Field(..., pattern="^(pip-audit|npm-audit|bandit|dependabot|trivy)$")
     service_name: str = Field(..., min_length=1)
     vulnerabilities: list[VulnerabilityIngestItem] = Field(default_factory=list)
@@ -83,138 +84,213 @@ class OverviewResponse(BaseModel):
 
 def _validate_uuid(value: str) -> str:
     """Validate and return UUID string."""
-    try:
-        UUID(value)
-        return value
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid vulnerability ID format")
+    return _validate_uuid_shared(value, "vulnerability ID")
 
 
-def _build_overview() -> OverviewResponse:
-    """Build overview from current vulnerabilities."""
-    by_sev: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    by_svc: dict[str, int] = {}
-    by_status: dict[str, int] = {}
-    for v in VULNERABILITIES.values():
-        by_sev[v["severity"]] = by_sev.get(v["severity"], 0) + 1
-        by_svc[v["service_name"]] = by_svc.get(v["service_name"], 0) + 1
-        by_status[v["status"]] = by_status.get(v["status"], 0) + 1
-    return OverviewResponse(
-        by_severity=by_sev,
-        by_service=by_svc,
-        by_status=by_status,
-        total=len(VULNERABILITIES),
-        trends={
-            "resolved_count": by_status.get("resolved", 0),
-            "open_count": by_status.get("open", 0) + by_status.get("in_progress", 0),
-        },
+def _vuln_model_to_response(v: VulnerabilityModel) -> Vulnerability:
+    """Convert Django model to API response."""
+    return Vulnerability(
+        vuln_id=str(v.id),
+        cve_id=v.cve_id,
+        title=v.title,
+        description=v.description or "",
+        severity=v.severity,
+        service_name=v.service_name,
+        package_name=v.package_name,
+        installed_version=v.installed_version,
+        fixed_version=v.fixed_version or None,
+        source=v.source,
+        status=v.status,
+        first_detected=v.first_detected.isoformat() + "Z" if v.first_detected else "",
+        last_seen=v.last_detected.isoformat() + "Z" if v.last_detected else "",
+        assignee=None,  # Model does not have assignee
+        notes=None,  # Model does not have notes
     )
+
+
+@sync_to_async
+def _get_project_with_tenant(project_id: str):
+    """Get project and tenant for project_id."""
+    try:
+        project = Project.objects.select_related("tenant").get(id=project_id)
+        return project, project.tenant_id
+    except Project.DoesNotExist:
+        return None, None
 
 
 # Endpoints
 @router.post("/ingest")
 async def ingest_vulnerabilities(req: VulnerabilityIngestRequest) -> dict[str, Any]:
     """Ingest vulnerability scan results."""
-    import uuid
-    from datetime import datetime
+    project, tenant_id = await _get_project_with_tenant(req.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
 
-    now = datetime.utcnow().isoformat() + "Z"
-    ingested = 0
-    for v in req.vulnerabilities:
-        vuln_id = str(uuid.uuid4())
-        entry = {
-            "vuln_id": vuln_id,
-            "cve_id": v.cve_id,
-            "title": v.title,
-            "description": v.description,
-            "severity": v.severity,
-            "service_name": req.service_name,
-            "package_name": v.package_name,
-            "installed_version": v.installed_version,
-            "fixed_version": v.fixed_version,
-            "source": req.source,
-            "status": "open",
-            "first_detected": now,
-            "last_seen": now,
-            "assignee": None,
-            "notes": None,
-        }
-        VULNERABILITIES[vuln_id] = entry
-        ingested += 1
+    @sync_to_async
+    def do_ingest():
+        now = datetime.utcnow()
+        for v in req.vulnerabilities:
+            VulnerabilityModel.objects.update_or_create(
+                project_id=req.project_id,
+                cve_id=v.cve_id,
+                service_name=req.service_name,
+                package_name=v.package_name,
+                defaults={
+                    "tenant_id": tenant_id,
+                    "title": v.title,
+                    "description": v.description,
+                    "severity": v.severity,
+                    "installed_version": v.installed_version,
+                    "fixed_version": v.fixed_version or "",
+                    "source": req.source,
+                    "status": "open",
+                    "last_detected": now,
+                },
+            )
+        return len(req.vulnerabilities)
+
+    ingested = await do_ingest()
     logger.info("Ingested %d vulnerabilities for %s from %s", ingested, req.service_name, req.source)
     return {"ingested": ingested, "service_name": req.service_name, "source": req.source}
 
 
 @router.get("", response_model=list[Vulnerability])
 async def list_vulnerabilities(
+    project_id: str = Query(..., description="Project ID for scoping"),
     service: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
 ) -> list[Vulnerability]:
     """List all vulnerabilities with optional filters."""
-    items = list(VULNERABILITIES.values())
-    if service:
-        items = [v for v in items if v["service_name"] == service]
-    if severity:
-        items = [v for v in items if v["severity"] == severity]
-    if status:
-        items = [v for v in items if v["status"] == status]
-    if source:
-        items = [v for v in items if v["source"] == source]
-    return [Vulnerability(**v) for v in items]
+
+    @sync_to_async
+    def do_list():
+        qs = VulnerabilityModel.objects.filter(project_id=project_id).order_by("-last_detected")
+        if service:
+            qs = qs.filter(service_name=service)
+        if severity:
+            qs = qs.filter(severity=severity)
+        if status:
+            qs = qs.filter(status=status)
+        if source:
+            qs = qs.filter(source=source)
+        return list(qs)
+
+    items = await do_list()
+    return [_vuln_model_to_response(v) for v in items]
 
 
 @router.get("/overview", response_model=OverviewResponse)
-async def get_overview() -> OverviewResponse:
+async def get_overview(
+    project_id: str = Query(..., description="Project ID for scoping"),
+) -> OverviewResponse:
     """Dashboard overview: counts by severity, service, status, trends."""
-    return _build_overview()
+
+    @sync_to_async
+    def do_overview():
+        from django.db.models import Count
+
+        qs = VulnerabilityModel.objects.filter(project_id=project_id)
+        by_sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for row in qs.values("severity").annotate(cnt=Count("id")):
+            by_sev[row["severity"]] = row["cnt"]
+
+        by_svc = dict(
+            qs.values("service_name").annotate(cnt=Count("id")).values_list("service_name", "cnt")
+        )
+        by_status = dict(qs.values("status").annotate(cnt=Count("id")).values_list("status", "cnt"))
+
+        total = qs.count()
+        return OverviewResponse(
+            by_severity=by_sev,
+            by_service=by_svc,
+            by_status=by_status,
+            total=total,
+            trends={
+                "resolved_count": by_status.get("resolved", 0) + by_status.get("fixed", 0),
+                "open_count": by_status.get("open", 0) + by_status.get("in_progress", 0),
+            },
+        )
+
+    return await do_overview()
 
 
 @router.get("/services/{service_name}/dependencies", response_model=dict[str, Any])
-async def get_service_dependencies(service_name: str) -> dict[str, Any]:
+async def get_service_dependencies(
+    service_name: str,
+    project_id: str = Query(..., description="Project ID for scoping"),
+) -> dict[str, Any]:
     """Get dependency tree for a service."""
-    if service_name not in DEPENDENCY_TREES:
-        # Build a simple demo tree from vulnerabilities for this service
+
+    @sync_to_async
+    def do_deps():
+        vulns = list(
+            VulnerabilityModel.objects.filter(
+                project_id=project_id, service_name=service_name
+            ).values("package_name", "installed_version", "cve_id")
+        )
         deps = {}
-        for v in VULNERABILITIES.values():
-            if v["service_name"] == service_name:
-                pkg = v["package_name"]
-                if pkg not in deps:
-                    deps[pkg] = {
-                        "name": pkg,
-                        "version": v["installed_version"],
-                        "direct": True,
-                        "vulnerabilities": [],
-                    }
-                deps[pkg]["vulnerabilities"].append(v["cve_id"])
+        for v in vulns:
+            pkg = v["package_name"]
+            if pkg not in deps:
+                deps[pkg] = {
+                    "name": pkg,
+                    "version": v["installed_version"],
+                    "direct": True,
+                    "vulnerabilities": [],
+                }
+            deps[pkg]["vulnerabilities"].append(v["cve_id"])
         if not deps:
             deps = {"demo-package": {"name": "demo-package", "version": "1.0.0", "direct": True, "vulnerabilities": []}}
-        DEPENDENCY_TREES[service_name] = {"service_name": service_name, "dependencies": list(deps.values())}
-    return DEPENDENCY_TREES[service_name]
+        return {"service_name": service_name, "dependencies": list(deps.values())}
+
+    return await do_deps()
 
 
 @router.get("/{vuln_id}", response_model=Vulnerability)
-async def get_vulnerability(vuln_id: str) -> Vulnerability:
+async def get_vulnerability(
+    vuln_id: str,
+    project_id: str = Query(..., description="Project ID for scoping"),
+) -> Vulnerability:
     """Get vulnerability detail."""
     _validate_uuid(vuln_id)
-    if vuln_id not in VULNERABILITIES:
+
+    @sync_to_async
+    def do_get():
+        try:
+            return VulnerabilityModel.objects.get(id=vuln_id, project_id=project_id)
+        except VulnerabilityModel.DoesNotExist:
+            return None
+
+    v = await do_get()
+    if not v:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    return Vulnerability(**VULNERABILITIES[vuln_id])
+    return _vuln_model_to_response(v)
 
 
 @router.patch("/{vuln_id}", response_model=Vulnerability)
-async def update_vulnerability(vuln_id: str, req: VulnerabilityUpdateRequest) -> Vulnerability:
+async def update_vulnerability(
+    vuln_id: str,
+    req: VulnerabilityUpdateRequest,
+    project_id: str = Query(..., description="Project ID for scoping"),
+) -> Vulnerability:
     """Update status, assignee, notes."""
     _validate_uuid(vuln_id)
-    if vuln_id not in VULNERABILITIES:
+
+    @sync_to_async
+    def do_update():
+        try:
+            v = VulnerabilityModel.objects.get(id=vuln_id, project_id=project_id)
+        except VulnerabilityModel.DoesNotExist:
+            return None
+        if req.status is not None:
+            v.status = req.status
+        v.save(update_fields=["status"] if req.status else [])
+        return v
+
+    v = await do_update()
+    if not v:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    v = VULNERABILITIES[vuln_id]
-    if req.status is not None:
-        v["status"] = req.status
-    if req.assignee is not None:
-        v["assignee"] = req.assignee
-    if req.notes is not None:
-        v["notes"] = req.notes
     logger.info("Updated vulnerability %s: status=%s", vuln_id, req.status)
-    return Vulnerability(**v)
+    return _vuln_model_to_response(v)
