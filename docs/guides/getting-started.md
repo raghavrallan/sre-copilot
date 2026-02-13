@@ -1,154 +1,133 @@
 # Getting Started with SRE Copilot
 
-**Last Updated:** 2026-02-01
-
 This guide will help you run the SRE Copilot platform locally using Docker Compose.
 
 ---
 
 ## Prerequisites
 
-- **Docker Desktop** or Docker Engine (20.10+)
-- **Docker Compose** (2.0+)
+- **Docker Desktop** (or Docker Engine 20.10+ with Compose v2)
 - **Git**
-- **8GB RAM** minimum
-- **Available Ports:** 5173, 8000, 8001, 8002, 8003, 8004, 8005, 8008, 5432, 6379
+- **PostgreSQL 13+** -- an external PostgreSQL instance (not included in Docker Compose)
+- **8 GB RAM** minimum
+- **Available Ports:** 3000, 8580, 8505
 
 ---
 
-## Quick Start (5 minutes)
+## Quick Start
 
-### 1. Clone and Setup
+### 1. Clone and Configure
 
 ```bash
-git clone https://github.com/your-org/sre-copilot.git
+git clone https://github.com/raghavrallan/sre-copilot.git
 cd sre-copilot
 cp .env.example .env
+```
+
+Edit `.env` with your actual values:
+
+```bash
+# Database -- point to your PostgreSQL instance
+POSTGRES_HOST=your-postgres-host
+POSTGRES_PORT=5432
+POSTGRES_DB=srecopilot
+POSTGRES_USER=srecopilot
+POSTGRES_PASSWORD=your-password
+
+# Redis (runs inside Docker)
+REDIS_URL=redis://redis:6379/0
+
+# JWT
+JWT_SECRET_KEY=change-me-to-a-random-string
+JWT_ALGORITHM=HS256
+
+# Azure OpenAI (optional -- AI features require this)
+AZURE_OPENAI_ENDPOINT=https://your-endpoint.cognitiveservices.azure.com/
+AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+
+# Frontend
+VITE_API_GATEWAY_URL=http://localhost:8580
+VITE_WEBSOCKET_URL=ws://localhost:8505
 ```
 
 ### 2. Start All Services
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-This will start:
-- PostgreSQL database (port 5432)
-- Redis cache (port 6379)
-- API Gateway (port 8000)
-- Auth Service (port 8001)
-- Incident Service (port 8002)
-- AI Service (port 8003)
-- Integration Service (port 8004)
-- WebSocket Service (port 8005)
-- Audit Service (port 8008)
-- Frontend (port 5173)
+This starts 15 containers:
 
-### 3. Initialize Database
+| Service | Internal Port | Description |
+|---------|--------------|-------------|
+| api-gateway | 8500 (ext 8580) | API routing, auth verification |
+| auth-service | 8501 | Authentication, RBAC |
+| incident-service | 8502 | Incident management |
+| ai-service | 8503 | AI hypothesis generation |
+| integration-service | 8504 | Prometheus/AlertManager webhooks |
+| websocket-service | 8505 (ext 8505) | Real-time WebSocket updates |
+| audit-service | 8508 | Audit logging |
+| metrics-collector-service | 8509 | Metrics, traces, errors, dashboards, SLOs |
+| log-service | 8510 | Log ingestion and search |
+| alerting-service | 8511 | Alert policies and evaluation |
+| synthetic-service | 8512 | HTTP health monitors |
+| security-service | 8513 | Vulnerability tracking |
+| cloud-connector-service | 8514 | AWS/Azure/GCP sync |
+| cicd-connector-service | 8515 | GitHub/Azure DevOps CI/CD |
+| frontend | 3000 (ext 3000) | React UI |
 
-Run Django migrations to create database tables:
+Plus a **Redis** container for caching and pub/sub.
 
-```bash
-# Option 1: Run from host (requires Python 3.11+)
-python scripts/migrate.py
+### 3. Access the Application
 
-# Option 2: Run inside auth-service container
-docker-compose exec auth-service python -c "
-import os, sys, django
-sys.path.insert(0, '/app/../../..')
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'shared.config.settings')
-django.setup()
-from django.core.management import call_command
-call_command('makemigrations')
-call_command('migrate')
-"
-```
+| URL | Description |
+|-----|-------------|
+| http://localhost:3000 | Frontend UI |
+| http://localhost:8580 | API Gateway |
+| http://localhost:8580/docs | Swagger API Documentation |
+| ws://localhost:8505/ws | WebSocket endpoint |
 
-### 4. Access the Application
+### 4. Register a New Account
 
-- **Frontend:** http://localhost:5173
-- **API Docs:** http://localhost:8580/docs
-- **Health Check:** http://localhost:8580/health
-
----
-
-## Service URLs
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| Frontend | http://localhost:5173 | React UI |
-| API Gateway | http://localhost:8580 | Main API entry |
-| API Docs | http://localhost:8580/docs | Swagger UI |
-| Auth Service | http://localhost:8501 | Authentication |
-| Incident Service | http://localhost:8502 | Incident management |
-| AI Service | http://localhost:8503 | AI hypotheses |
-| Integration Service | http://localhost:8504 | Webhooks |
-| WebSocket Service | http://localhost:8505 | Real-time updates |
-| Audit Service | http://localhost:8508 | Audit logging |
-
----
-
-## Testing the Platform
-
-### 1. Register a New Account
-
-1. Go to http://localhost:5173/register
+1. Open http://localhost:3000/register
 2. Fill in:
-   - **Organization Name:** `Test Company`
-   - **Full Name:** `John Doe`
-   - **Email:** `john@test.com`
-   - **Password:** `password123`
-3. Click "Register"
+   - **Organization Name:** Your company name
+   - **Full Name:** Your name
+   - **Email:** your@email.com
+   - **Password:** A strong password
+3. Click **Register**
 
-You'll be automatically logged in and redirected to the dashboard.
-
-### 2. Create an Incident
-
-1. Click "Incidents" in the navigation
-2. Click "+ New Incident"
-3. Fill in:
-   - **Title:** `High CPU usage on payment-api`
-   - **Description:** `CPU spiked to 90% after recent deployment`
-   - **Service Name:** `payment-api`
-   - **Severity:** `High`
-4. Click "Create Incident"
-
-### 3. View AI-Generated Hypotheses
-
-1. Click on the incident you just created
-2. Wait a few seconds for AI to generate hypotheses
-3. You'll see 3-5 hypotheses ranked by confidence score with supporting evidence
+You will be logged in automatically and redirected to the dashboard.
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────┐
-│  Frontend   │  React + TypeScript (Port 5173)
-│  (Vite)     │
-└──────┬──────┘
+┌──────────────┐           ┌──────────────┐
+│   Frontend   │◀──WS──────│  WebSocket   │
+│   (React)    │           │   Service    │
+│   :3000      │           │   :8505      │
+└──────┬───────┘           └──────┬───────┘
+       │                          │
+       ▼                          │
+┌──────────────┐                  │
+│ API Gateway  │◀─────────────────┘
+│   :8580      │
+└──────┬───────┘
        │
-       ▼
-┌─────────────┐
-│ API Gateway │  FastAPI (Port 8000)
-│             │  Routes requests to services
-└──────┬──────┘
-       │
-       ├─────────┬─────────┬─────────┬─────────┐
-       ▼         ▼         ▼         ▼         ▼
-   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
-   │ Auth   │ │Incident│ │   AI   │ │ Integ  │ │WebSocket│
-   │Service │ │Service │ │Service │ │Service │ │Service │
-   │  :8501 │ │  :8502 │ │  :8503 │ │  :8504 │ │  :8505 │
-   └───┬────┘ └───┬────┘ └────────┘ └────────┘ └────────┘
-       │          │
-       └────┬─────┘
-            ▼
-     ┌─────────────┐
-     │ PostgreSQL  │  Database (Port 5432)
-     │   + Redis   │  Cache (Port 6379)
-     └─────────────┘
+       ├──────┬──────┬──────┬──────┬──────┬──────┬──────┐
+       ▼      ▼      ▼      ▼      ▼      ▼      ▼      ▼
+    Auth  Incident  AI   Integ  Metrics  Logs  Alert  ...more
+    :8501  :8502  :8503  :8504  :8509   :8510  :8511
+       │      │                   │       │
+       └──────┴───────────────────┴───────┘
+                       │
+              ┌────────┴────────┐
+              │   PostgreSQL    │   (external)
+              │   + Redis       │   (containerized)
+              └─────────────────┘
 ```
 
 ---
@@ -157,97 +136,35 @@ You'll be automatically logged in and redirected to the dashboard.
 
 ### Hot Reload
 
-All services are configured with hot reload:
-- **Backend:** Edit Python files, uvicorn auto-reloads
-- **Frontend:** Edit React files, Vite auto-reloads
+All services have hot reload enabled:
+- **Backend:** Edit Python files in `services/` or `shared/` -- uvicorn auto-reloads
+- **Frontend:** Edit React files in `frontend/src/` -- Vite auto-reloads
 
 ### Viewing Logs
 
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
-docker-compose logs -f auth-service
+docker compose logs -f api-gateway
 
-# Last 100 lines
-docker-compose logs --tail=100 incident-service
+# Last 50 lines
+docker compose logs --tail=50 metrics-collector-service
 ```
 
-### Running Tests
+### Rebuilding a Service
 
-**Backend:**
+After changing `requirements.txt` or `Dockerfile`:
+
 ```bash
-cd services/auth-service
-pip install -r requirements.txt
-pytest
-
-cd services/incident-service
-pytest
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run test
+docker compose up --build -d <service-name>
 ```
 
 ### Stopping Services
 
 ```bash
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes (clears database)
-docker-compose down -v
-```
-
----
-
-## Troubleshooting
-
-### Services won't start
-
-```bash
-# Check logs
-docker-compose logs -f
-
-# Restart specific service
-docker-compose restart auth-service
-
-# Rebuild and restart
-docker-compose up -d --build
-```
-
-### Database connection errors
-
-```bash
-# Check if PostgreSQL is healthy
-docker-compose ps postgres
-
-# Check PostgreSQL logs
-docker-compose logs postgres
-
-# Restart PostgreSQL
-docker-compose restart postgres
-```
-
-### Frontend can't connect to API
-
-1. Check API Gateway is running: http://localhost:8580/health
-2. Check browser console for CORS errors
-3. Verify `.env` has correct `VITE_API_GATEWAY_URL`
-
-### Port already in use
-
-```bash
-# Windows
-netstat -ano | findstr :8580
-taskkill /PID <pid> /F
-
-# Linux/Mac
-lsof -ti:8580 | xargs kill -9
+docker compose down
 ```
 
 ---
@@ -272,50 +189,71 @@ curl -X POST http://localhost:8580/api/v1/auth/register \
 ```bash
 curl -X POST http://localhost:8580/api/v1/auth/login \
   -H "Content-Type: application/json" \
+  -c cookies.txt \
   -d '{
     "email": "test@example.com",
     "password": "password123"
   }'
 ```
 
-### Create Incident
+### List Incidents (authenticated)
 
 ```bash
-TOKEN="your-jwt-token-here"
-
-curl -X POST http://localhost:8580/api/v1/incidents \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "title": "High CPU usage",
-    "description": "CPU spiked to 90%",
-    "service_name": "payment-api",
-    "severity": "high"
-  }'
+curl http://localhost:8580/api/v1/incidents \
+  -b cookies.txt
 ```
 
-### List Incidents
+### Ingest Metrics (API key auth)
 
 ```bash
-curl -X GET http://localhost:8580/api/v1/incidents \
-  -H "Authorization: Bearer $TOKEN"
+curl -X POST http://localhost:8580/api/v1/ingest/metrics \
+  -H "X-API-Key: your-project-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"metrics": [{"name": "cpu_usage", "value": 72.5, "tags": {"host": "web-01"}}]}'
+```
+
+---
+
+## Troubleshooting
+
+### Services won't start
+
+```bash
+docker compose logs -f <service-name>
+docker compose up --build -d <service-name>
+```
+
+### Database connection errors
+
+Verify your `.env` has the correct `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, and `POSTGRES_PASSWORD`. The database is external -- Docker containers must be able to reach it over the network.
+
+### Frontend can't connect to API
+
+1. Check API Gateway: http://localhost:8580/health
+2. Verify `.env` has `VITE_API_GATEWAY_URL=http://localhost:8580`
+
+### WebSocket shows "Offline"
+
+1. Check WebSocket service: http://localhost:8505/health
+2. Verify `.env` has `VITE_WEBSOCKET_URL=ws://localhost:8505`
+3. Hard-refresh the browser (Ctrl+Shift+R) to reset the reconnect counter
+
+### Port already in use
+
+```bash
+# Windows
+netstat -ano | findstr :8580
+taskkill /PID <pid> /F
+
+# Linux / Mac
+lsof -ti:8580 | xargs kill -9
 ```
 
 ---
 
 ## Next Steps
 
-1. **Add Real AI:** Set `ANTHROPIC_API_KEY` or Azure OpenAI credentials in `.env`
-2. **Connect Monitoring:** Set up Prometheus/AlertManager integration
-3. **Customize UI:** Modify React components in `frontend/src`
-4. **Add Features:** Runbooks, timelines, notifications
-5. **Deploy:** Use Kubernetes manifests in `infra/kubernetes`
-
----
-
-## Related Documentation
-
-- [System Architecture](../architecture/system-architecture.md)
-- [API Specifications](../api-specs/README.md)
-- [Testing Guide](./testing.md)
-- [Technology Choices](../tech-stack/technology-choices.md)
+- **[System Architecture](../architecture/system-architecture.md)** -- Understand the full system design
+- **[API Reference](../api-specs/README.md)** -- Explore all API endpoints
+- **[Testing Guide](./testing.md)** -- Run the test suite
+- **[Security Guide](./security.md)** -- Security best practices
