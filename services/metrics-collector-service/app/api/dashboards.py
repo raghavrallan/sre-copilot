@@ -3,18 +3,19 @@ Custom dashboards CRUD endpoints
 """
 import logging
 import uuid
-from typing import Any, Optional
 from datetime import datetime
+from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from asgiref.sync import sync_to_async
+from django.utils import timezone
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
+
+from shared.models.observability import Dashboard
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# In-memory dashboard storage
-dashboards: dict[str, dict[str, Any]] = {}
 
 
 class WidgetConfig(BaseModel):
@@ -31,6 +32,8 @@ class CreateDashboardRequest(BaseModel):
     description: str = ""
     widgets: list[WidgetConfig] = []
     variables: dict[str, str] = {}
+    project_id: Optional[str] = None
+    tenant_id: Optional[str] = None
 
 
 class UpdateDashboardRequest(BaseModel):
@@ -40,114 +43,187 @@ class UpdateDashboardRequest(BaseModel):
     variables: Optional[dict[str, str]] = None
 
 
-def _ensure_dashboards():
-    if not dashboards:
-        demo = [
-            {
-                "dashboard_id": str(uuid.uuid4()),
-                "name": "Production Overview",
-                "description": "High-level production metrics",
-                "widgets": [
-                    {"id": str(uuid.uuid4()), "title": "Request Rate", "type": "line", "metric_query": "SELECT rate(count(*), 1 minute) FROM transactions", "width": 6, "height": 4},
-                    {"id": str(uuid.uuid4()), "title": "Error Rate", "type": "area", "metric_query": "SELECT percentage(count(*), WHERE error IS true) FROM transactions", "width": 6, "height": 4},
-                    {"id": str(uuid.uuid4()), "title": "P95 Latency", "type": "line", "metric_query": "SELECT percentile(duration, 95) FROM transactions", "width": 6, "height": 4},
-                    {"id": str(uuid.uuid4()), "title": "Top Services", "type": "bar", "metric_query": "SELECT count(*) FROM transactions FACET service_name", "width": 6, "height": 4},
-                ],
-                "variables": {"env": "production"},
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-            },
-            {
-                "dashboard_id": str(uuid.uuid4()),
-                "name": "Database Performance",
-                "description": "Database query monitoring",
-                "widgets": [
-                    {"id": str(uuid.uuid4()), "title": "Query Count", "type": "stat", "metric_query": "SELECT count(*) FROM db_queries", "width": 3, "height": 2},
-                    {"id": str(uuid.uuid4()), "title": "Avg Query Time", "type": "stat", "metric_query": "SELECT average(duration) FROM db_queries", "width": 3, "height": 2},
-                    {"id": str(uuid.uuid4()), "title": "Slow Queries", "type": "table", "metric_query": "SELECT * FROM db_queries WHERE duration > 100 LIMIT 10", "width": 12, "height": 6},
-                ],
-                "variables": {},
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-            },
-            {
-                "dashboard_id": str(uuid.uuid4()),
-                "name": "Infrastructure Health",
-                "description": "Host and container metrics",
-                "widgets": [
-                    {"id": str(uuid.uuid4()), "title": "CPU Usage", "type": "line", "metric_query": "SELECT average(cpu_percent) FROM hosts", "width": 6, "height": 4},
-                    {"id": str(uuid.uuid4()), "title": "Memory Usage", "type": "area", "metric_query": "SELECT average(memory_percent) FROM hosts", "width": 6, "height": 4},
-                    {"id": str(uuid.uuid4()), "title": "Disk I/O", "type": "bar", "metric_query": "SELECT sum(disk_read), sum(disk_write) FROM hosts", "width": 12, "height": 4},
-                ],
-                "variables": {"host": "*"},
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-            },
-        ]
-        for d in demo:
-            dashboards[d["dashboard_id"]] = d
-
-
 @router.post("")
-async def create_dashboard(request: CreateDashboardRequest) -> dict[str, Any]:
-    dashboard_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat() + "Z"
-    widgets = []
-    for w in request.widgets:
-        wd = w.model_dump()
-        if not wd["id"]:
-            wd["id"] = str(uuid.uuid4())
-        widgets.append(wd)
+async def create_dashboard(request: Request) -> dict[str, Any]:
+    """Create dashboard. project_id and tenant_id from body."""
+    body = await request.json()
+    project_id = body.get("project_id")
+    tenant_id = body.get("tenant_id")
+    if not project_id or not tenant_id:
+        raise HTTPException(status_code=400, detail="project_id and tenant_id are required")
 
-    dashboard = {
-        "dashboard_id": dashboard_id,
-        "name": request.name,
-        "description": request.description,
-        "widgets": widgets,
-        "variables": request.variables,
-        "created_at": now,
-        "updated_at": now,
-    }
-    dashboards[dashboard_id] = dashboard
-    return dashboard
+    name = body.get("name", "")
+    description = body.get("description", "")
+    widgets = body.get("widgets", [])
+    variables = body.get("variables", {})
+
+    widgets_data = []
+    for w in widgets:
+        wd = w if isinstance(w, dict) else w.model_dump() if hasattr(w, "model_dump") else {}
+        if not wd.get("id"):
+            wd["id"] = str(uuid.uuid4())
+        widgets_data.append(wd)
+
+    variables_data = variables if isinstance(variables, (list, dict)) else {}
+
+    @sync_to_async
+    def _create():
+        dash = Dashboard.objects.create(
+            project_id=project_id,
+            tenant_id=tenant_id,
+            name=name,
+            description=description,
+            widgets=widgets_data,
+            variables=variables_data,
+            layout={},
+            is_default=False,
+            created_by="",
+        )
+        return {
+            "dashboard_id": str(dash.id),
+            "name": dash.name,
+            "description": dash.description,
+            "widgets": dash.widgets,
+            "variables": dash.variables if isinstance(dash.variables, dict) else dict(dash.variables) if isinstance(dash.variables, list) else {},
+            "created_at": dash.created_at.isoformat() + "Z" if dash.created_at.tzinfo else dash.created_at.isoformat() + "Z",
+            "updated_at": dash.updated_at.isoformat() + "Z" if dash.updated_at.tzinfo else dash.updated_at.isoformat() + "Z",
+        }
+
+    return await _create()
 
 
 @router.get("")
-async def list_dashboards() -> list[dict[str, Any]]:
-    _ensure_dashboards()
-    return sorted(dashboards.values(), key=lambda d: d.get("updated_at", ""), reverse=True)
+async def list_dashboards(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> list[dict[str, Any]]:
+    """List dashboards."""
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _list():
+        dashboards = list(
+            Dashboard.objects.filter(project_id=pid)
+            .values("id", "name", "description", "widgets", "variables", "created_at", "updated_at")
+            .order_by("-updated_at")
+        )
+        return [
+            {
+                "dashboard_id": str(d["id"]),
+                "name": d["name"],
+                "description": d["description"],
+                "widgets": d["widgets"],
+                "variables": d["variables"] if isinstance(d["variables"], dict) else {},
+                "created_at": d["created_at"].isoformat() + "Z" if d["created_at"].tzinfo else d["created_at"].isoformat() + "Z",
+                "updated_at": d["updated_at"].isoformat() + "Z" if d["updated_at"].tzinfo else d["updated_at"].isoformat() + "Z",
+            }
+            for d in dashboards
+        ]
+
+    return await _list()
 
 
 @router.get("/{dashboard_id}")
-async def get_dashboard(dashboard_id: str) -> dict[str, Any]:
-    _ensure_dashboards()
-    if dashboard_id not in dashboards:
+async def get_dashboard(
+    dashboard_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
+    """Get dashboard by ID."""
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _get():
+        try:
+            dash = Dashboard.objects.get(project_id=pid, id=dashboard_id)
+        except (Dashboard.DoesNotExist, ValueError):
+            return None
+        return {
+            "dashboard_id": str(dash.id),
+            "name": dash.name,
+            "description": dash.description,
+            "widgets": dash.widgets,
+            "variables": dash.variables if isinstance(dash.variables, dict) else (dict(dash.variables) if isinstance(dash.variables, list) else {}),
+            "created_at": dash.created_at.isoformat() + "Z" if dash.created_at.tzinfo else dash.created_at.isoformat() + "Z",
+            "updated_at": dash.updated_at.isoformat() + "Z" if dash.updated_at.tzinfo else dash.updated_at.isoformat() + "Z",
+        }
+
+    result = await _get()
+    if result is None:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    return dashboards[dashboard_id]
+    return result
 
 
 @router.put("/{dashboard_id}")
-async def update_dashboard(dashboard_id: str, request: UpdateDashboardRequest) -> dict[str, Any]:
-    _ensure_dashboards()
-    if dashboard_id not in dashboards:
+async def update_dashboard(
+    dashboard_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
+    """Update dashboard."""
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    body = await request.json()
+
+    @sync_to_async
+    def _update():
+        try:
+            dash = Dashboard.objects.get(project_id=pid, id=dashboard_id)
+        except (Dashboard.DoesNotExist, ValueError):
+            return None
+        if body.get("name") is not None:
+            dash.name = body["name"]
+        if body.get("description") is not None:
+            dash.description = body["description"]
+        if body.get("widgets") is not None:
+            widgets = body["widgets"]
+            dash.widgets = [w if isinstance(w, dict) else w.model_dump() if hasattr(w, "model_dump") else w for w in widgets]
+        if body.get("variables") is not None:
+            v = body["variables"]
+            dash.variables = v if isinstance(v, list) else list(v.items()) if isinstance(v, dict) else []
+        dash.save()
+        return {
+            "dashboard_id": str(dash.id),
+            "name": dash.name,
+            "description": dash.description,
+            "widgets": dash.widgets,
+            "variables": dash.variables if isinstance(dash.variables, dict) else (dict(dash.variables) if isinstance(dash.variables, list) else {}),
+            "created_at": dash.created_at.isoformat() + "Z" if dash.created_at.tzinfo else dash.created_at.isoformat() + "Z",
+            "updated_at": dash.updated_at.isoformat() + "Z" if dash.updated_at.tzinfo else dash.updated_at.isoformat() + "Z",
+        }
+
+    result = await _update()
+    if result is None:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    d = dashboards[dashboard_id]
-    if request.name is not None:
-        d["name"] = request.name
-    if request.description is not None:
-        d["description"] = request.description
-    if request.widgets is not None:
-        d["widgets"] = [w.model_dump() for w in request.widgets]
-    if request.variables is not None:
-        d["variables"] = request.variables
-    d["updated_at"] = datetime.utcnow().isoformat() + "Z"
-    return d
+    return result
 
 
 @router.delete("/{dashboard_id}")
-async def delete_dashboard(dashboard_id: str) -> dict:
-    _ensure_dashboards()
-    if dashboard_id not in dashboards:
+async def delete_dashboard(
+    dashboard_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict:
+    """Delete dashboard."""
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+
+    @sync_to_async
+    def _delete():
+        try:
+            dash = Dashboard.objects.get(project_id=pid, id=dashboard_id)
+            dash.delete()
+            return True
+        except (Dashboard.DoesNotExist, ValueError):
+            return False
+
+    if not await _delete():
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    del dashboards[dashboard_id]
     return {"status": "deleted", "dashboard_id": dashboard_id}

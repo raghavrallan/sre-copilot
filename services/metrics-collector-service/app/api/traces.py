@@ -2,13 +2,15 @@
 Distributed tracing endpoints
 """
 import logging
+from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from asgiref.sync import sync_to_async
+from django.utils import timezone
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.storage import traces, spans_by_trace
-from app.services.demo_data import generate_demo_traces
+from shared.models.observability import Trace, Span, ServiceRegistration
 
 logger = logging.getLogger(__name__)
 
@@ -30,41 +32,112 @@ class SpanModel(BaseModel):
 
 
 class TraceIngestRequest(BaseModel):
-    """Trace ingest request with spans"""
+    """Trace ingest request with spans - project_id and tenant_id injected by API gateway"""
     spans: list[SpanModel]
+    project_id: Optional[str] = None
+    tenant_id: Optional[str] = None
 
 
-def _ensure_traces() -> None:
-    """Ensure we have demo traces if storage is empty."""
-    if not traces:
-        trace_list = generate_demo_traces()
-        for t in trace_list:
-            traces.append({"trace_id": t["trace_id"], "spans": t["spans"]})
-            spans_by_trace[t["trace_id"]] = t["spans"]
-        logger.info("Generated demo traces for empty storage")
+async def _upsert_service_registration(project_id: str, tenant_id: str, service_name: str):
+    """Auto-update ServiceRegistration when new data is ingested."""
+    @sync_to_async
+    def _do():
+        reg, _ = ServiceRegistration.objects.update_or_create(
+            project_id=project_id,
+            tenant_id=tenant_id,
+            service_name=service_name,
+            defaults={
+                "last_seen": timezone.now(),
+                "source": "sdk",
+                "service_type": "backend",
+            },
+        )
+        return reg
+
+    await _do()
 
 
 @router.post("/ingest")
-async def ingest_traces(request: TraceIngestRequest) -> dict[str, Any]:
-    """Accept spans for distributed tracing."""
-    trace_ids = set()
-    for span in request.spans:
-        span_data = span.model_dump()
-        if span.trace_id not in spans_by_trace:
-            spans_by_trace[span.trace_id] = []
-        spans_by_trace[span.trace_id].append(span_data)
-        trace_ids.add(span.trace_id)
+async def ingest_traces(request: Request) -> dict[str, Any]:
+    """Accept spans for distributed tracing. project_id and tenant_id from body (injected by gateway)."""
+    body = await request.json()
+    project_id = body.get("project_id")
+    tenant_id = body.get("tenant_id")
+    if not project_id or not tenant_id:
+        raise HTTPException(status_code=400, detail="project_id and tenant_id are required (injected by API gateway)")
 
-    for tid in trace_ids:
-        if not any(t["trace_id"] == tid for t in traces):
-            traces.append({"trace_id": tid, "spans": spans_by_trace[tid]})
+    spans_data = body.get("spans", [])
+    now = timezone.now()
 
-    logger.info("Ingested %d spans for %d traces", len(request.spans), len(trace_ids))
-    return {"ingested_spans": len(request.spans), "trace_ids": list(trace_ids)}
+    @sync_to_async
+    def _ingest():
+        trace_ids = set()
+        for span in spans_data:
+            trace_id = span.get("trace_id")
+            trace_ids.add(trace_id)
+            ts_str = span.get("timestamp")
+            ts = now
+            if ts_str:
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+            Span.objects.create(
+                project_id=project_id,
+                tenant_id=tenant_id,
+                trace_id=trace_id,
+                span_id=span.get("span_id", ""),
+                parent_span_id=span.get("parent_span_id") or "",
+                service_name=span.get("service_name", ""),
+                operation=span.get("operation", ""),
+                duration_ms=float(span.get("duration_ms", 0)),
+                status=span.get("status", "ok"),
+                attributes=span.get("attributes", {}),
+                events=span.get("events", []),
+                timestamp=ts,
+            )
+        # Create/update Trace records
+        for tid in trace_ids:
+            spans = list(
+                Span.objects.filter(project_id=project_id, trace_id=tid).values(
+                    "service_name", "duration_ms", "status", "timestamp"
+                )
+            )
+            if not spans:
+                continue
+            total_duration = sum(s["duration_ms"] for s in spans)
+            has_error = any(s.get("status") == "error" for s in spans)
+            root = spans[0] if spans else {}
+            Trace.objects.update_or_create(
+                project_id=project_id,
+                tenant_id=tenant_id,
+                trace_id=tid,
+                defaults={
+                    "root_service": root.get("service_name", ""),
+                    "root_operation": "",
+                    "duration_ms": total_duration,
+                    "span_count": len(spans),
+                    "has_error": has_error,
+                    "timestamp": root.get("timestamp", now),
+                },
+            )
+        return list(trace_ids)
+
+    trace_ids = await _ingest()
+
+    for span in spans_data:
+        svc = span.get("service_name")
+        if svc:
+            await _upsert_service_registration(project_id, tenant_id, svc)
+
+    logger.info("Ingested %d spans for %d traces", len(spans_data), len(trace_ids))
+    return {"ingested_spans": len(spans_data), "trace_ids": trace_ids}
 
 
 @router.get("")
 async def list_traces(
+    request: Request,
+    project_id: Optional[str] = Query(None),
     service: Optional[str] = Query(None),
     min_duration: Optional[float] = Query(None),
     max_duration: Optional[float] = Query(None),
@@ -72,83 +145,126 @@ async def list_traces(
     limit: int = Query(50, ge=1, le=200),
 ) -> list[dict[str, Any]]:
     """List traces with filters."""
-    _ensure_traces()
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
 
-    result = []
-    for t in traces:
-        tid = t["trace_id"]
-        spans = spans_by_trace.get(tid, t.get("spans", []))
-        if not spans:
-            continue
+    @sync_to_async
+    def _list():
+        qs = Trace.objects.filter(project_id=pid)
+        if min_duration is not None:
+            qs = qs.filter(duration_ms__gte=min_duration)
+        if max_duration is not None:
+            qs = qs.filter(duration_ms__lte=max_duration)
+        if status == "error":
+            qs = qs.filter(has_error=True)
+        traces = list(qs.order_by("-timestamp")[:limit * 2])  # fetch extra for filtering
+        result = []
+        for t in traces:
+            if service:
+                span_services = set(
+                    Span.objects.filter(project_id=pid, trace_id=t.trace_id)
+                    .values_list("service_name", flat=True)
+                    .distinct()
+                )
+                if service not in span_services:
+                    continue
+            if status and status != "error":
+                span_statuses = set(
+                    Span.objects.filter(project_id=pid, trace_id=t.trace_id)
+                    .values_list("status", flat=True)
+                )
+                if status not in span_statuses:
+                    continue
+            span_count = Span.objects.filter(project_id=pid, trace_id=t.trace_id).count()
+            result.append({
+                "trace_id": t.trace_id,
+                "duration_ms": round(t.duration_ms, 2),
+                "service_count": len(set(
+                    Span.objects.filter(project_id=pid, trace_id=t.trace_id)
+                    .values_list("service_name", flat=True)
+                )),
+                "span_count": span_count,
+            })
+            if len(result) >= limit:
+                break
+        return result
 
-        total_duration = sum(s.get("duration_ms", 0) for s in spans)
-        if min_duration is not None and total_duration < min_duration:
-            continue
-        if max_duration is not None and total_duration > max_duration:
-            continue
-
-        services_in_trace = set(s.get("service_name") for s in spans)
-        if service is not None and service not in services_in_trace:
-            continue
-
-        if status is not None:
-            span_statuses = [s.get("status") for s in spans]
-            if status not in span_statuses:
-                continue
-
-        result.append({
-            "trace_id": tid,
-            "duration_ms": round(total_duration, 2),
-            "service_count": len(services_in_trace),
-            "span_count": len(spans),
-        })
-        if len(result) >= limit:
-            break
-
-    return result
+    return await _list()
 
 
 @router.get("/services/dependency-map")
-async def get_service_dependency_map() -> dict[str, Any]:
+async def get_service_dependency_map(
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
     """Get service dependency map from trace data."""
-    _ensure_traces()
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
 
-    edges: list[tuple[str, str]] = []
-    for t in traces:
-        spans = spans_by_trace.get(t["trace_id"], t.get("spans", []))
-        span_by_id = {s["span_id"]: s for s in spans}
+    @sync_to_async
+    def _map():
+        spans = list(
+            Span.objects.filter(project_id=pid)
+            .values("trace_id", "span_id", "parent_span_id", "service_name")
+            .order_by("trace_id")
+        )
+        edges = []
+        span_by_trace = {}
         for s in spans:
-            parent_id = s.get("parent_span_id")
-            if parent_id and parent_id in span_by_id:
-                parent = span_by_id[parent_id]
-                child_svc = s.get("service_name")
-                parent_svc = parent.get("service_name")
-                if child_svc != parent_svc:
-                    edges.append((parent_svc, child_svc))
+            tid = s["trace_id"]
+            if tid not in span_by_trace:
+                span_by_trace[tid] = {}
+            span_by_trace[tid][s["span_id"]] = s
+        for tid, span_by_id in span_by_trace.items():
+            for s in span_by_id.values():
+                parent_id = s.get("parent_span_id")
+                if parent_id and parent_id in span_by_id:
+                    parent = span_by_id[parent_id]
+                    child_svc = s.get("service_name")
+                    parent_svc = parent.get("service_name")
+                    if child_svc and parent_svc and child_svc != parent_svc:
+                        edges.append((parent_svc, child_svc))
+        nodes = set()
+        for a, b in edges:
+            nodes.add(a)
+            nodes.add(b)
+        return {
+            "nodes": list(nodes),
+            "edges": [{"source": a, "target": b} for a, b in edges],
+            "dependency_map": {n: list(set(b for a, b in edges if a == n)) for n in nodes},
+        }
 
-    nodes = set()
-    for a, b in edges:
-        nodes.add(a)
-        nodes.add(b)
-
-    return {
-        "nodes": list(nodes),
-        "edges": [{"source": a, "target": b} for a, b in edges],
-        "dependency_map": {n: list(set(b for a, b in edges if a == n)) for n in nodes},
-    }
+    return await _map()
 
 
 @router.get("/{trace_id}")
-async def get_trace(trace_id: str) -> dict[str, Any]:
+async def get_trace(
+    trace_id: str,
+    request: Request,
+    project_id: Optional[str] = Query(None),
+) -> dict[str, Any]:
     """Get all spans for a trace (waterfall data)."""
-    _ensure_traces()
+    pid = project_id or request.headers.get("X-Project-ID")
+    if not pid:
+        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
 
-    spans = spans_by_trace.get(trace_id)
-    if not spans:
-        for t in traces:
-            if t["trace_id"] == trace_id:
-                spans = t.get("spans", [])
-                break
+    @sync_to_async
+    def _get():
+        spans = list(
+            Span.objects.filter(project_id=pid, trace_id=trace_id)
+            .values(
+                "trace_id", "span_id", "parent_span_id", "service_name",
+                "operation", "duration_ms", "status", "attributes", "events", "timestamp"
+            )
+        )
+        for s in spans:
+            if isinstance(s.get("timestamp"), datetime):
+                s["timestamp"] = s["timestamp"].isoformat() + "Z" if s["timestamp"].tzinfo else s["timestamp"].isoformat() + "Z"
+        return spans
+
+    spans = await _get()
     if not spans:
         raise HTTPException(status_code=404, detail="Trace not found")
 

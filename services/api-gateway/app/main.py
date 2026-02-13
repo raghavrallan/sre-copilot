@@ -2,19 +2,24 @@
 API Gateway - Main entry point for all requests
 """
 import logging
+import os
+import sys
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
-import os
-import sys
 
 logger = logging.getLogger(__name__)
 
-# Add shared to path
+# Add shared to path and initialize Django BEFORE importing app modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 
-from app.api import health, proxy, observability_proxy
+from shared.utils.database import setup_django
+
+setup_django()
+
+from app.api import health, proxy, observability_proxy, ingest_proxy, settings_api
 from app.core.config import settings
 from app.middleware.encryption_middleware import EncryptionMiddleware, RateLimitMiddleware
 
@@ -71,6 +76,15 @@ app.add_middleware(
 app.include_router(health.router, prefix="/health", tags=["Health"])
 app.include_router(proxy.router, prefix="/api/v1", tags=["API"])
 app.include_router(observability_proxy.router, prefix="/api/v1", tags=["Observability"])
+app.include_router(ingest_proxy.router, prefix="/api/v1", tags=["Ingest"])
+app.include_router(settings_api.router, prefix="/api/v1", tags=["Settings"])
+
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
 
 
 @app.exception_handler(Exception)

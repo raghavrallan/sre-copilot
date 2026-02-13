@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     ALERTING_SERVICE_URL: str = "http://alerting-service:8511"
     SYNTHETIC_SERVICE_URL: str = "http://synthetic-service:8512"
     SECURITY_SERVICE_URL: str = "http://security-service:8513"
+    CLOUD_CONNECTOR_URL: str = "http://cloud-connector-service:8514"
 
     # Timeouts
     SERVICE_TIMEOUT: int = 30

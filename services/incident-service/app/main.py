@@ -26,6 +26,13 @@ app = FastAPI(
 app.include_router(incidents.router, tags=["Incidents"])
 app.include_router(workflow.router, tags=["Workflow"])
 
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
+
 
 @app.get("/health")
 async def health_check():

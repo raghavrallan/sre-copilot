@@ -24,7 +24,8 @@ Configure via environment variables or a `.env` file in the agent directory:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COLLECTOR_URL` | `http://localhost:8001` | Base URL of the metrics-collector-service |
+| `COLLECTOR_URL` | `http://localhost:8580/api/v1/ingest` | Base URL of the API gateway (ingest endpoint) |
+| `API_KEY` | *(empty)* | API key for authentication (required when using the public API gateway) |
 | `HOSTNAME_OVERRIDE` | *(system hostname)* | Override hostname for this agent |
 | `COLLECT_INTERVAL` | `15` | Seconds between metric collection cycles |
 | `COLLECT_DOCKER` | `true` | Set to `false` to skip Docker container collection |
@@ -46,7 +47,7 @@ python -m agent
 To run with custom settings:
 
 ```bash
-COLLECTOR_URL=http://metrics-collector:8001 COLLECT_INTERVAL=30 python agent.py
+COLLECTOR_URL=http://localhost:8580/api/v1/ingest API_KEY=your-api-key COLLECT_INTERVAL=30 python agent.py
 ```
 
 ## Docker
@@ -55,10 +56,11 @@ The agent can run in a container. Ensure the Docker socket is mounted if you wan
 
 ```bash
 docker run -v /var/run/docker.sock:/var/run/docker.sock \
-  -e COLLECTOR_URL=http://host.docker.internal:8001 \
+  -e COLLECTOR_URL=http://host.docker.internal:8580/api/v1/ingest \
+  -e API_KEY=your-api-key \
   your-image python agent.py
 ```
 
 ## Metrics Endpoint
 
-Metrics are sent via `POST /infrastructure/ingest` to the metrics-collector-service. The payload matches the `HostMetrics` schema expected by that service.
+Metrics are sent via `POST /infrastructure` to the API gateway ingest endpoint. The payload matches the `HostMetrics` schema expected by the service. When using the public API gateway, set the `API_KEY` environment variable for authentication.

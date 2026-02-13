@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { GitCommit, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { GitCommit, CheckCircle, Loader2, AlertCircle, GitBranch } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import api from '../services/api'
 
 interface DeploymentApi {
@@ -118,8 +119,12 @@ export default function DeploymentsPage() {
       <div className="flex gap-8">
         <div className="flex-1">
           {deployments.length === 0 ? (
-            <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-12 text-center text-gray-400">
-              No deployments found.
+            <div className="bg-gray-800 rounded-lg border border-gray-700/50">
+              <EmptyState
+                icon={<GitBranch size={32} />}
+                title="No deployments tracked"
+                description="Connect your CI/CD pipeline (GitHub, Azure DevOps) to track deployments automatically."
+              />
             </div>
           ) : (
             <div className="relative">

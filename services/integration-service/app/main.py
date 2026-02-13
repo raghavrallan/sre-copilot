@@ -24,6 +24,13 @@ app = FastAPI(
 # Include routers
 app.include_router(webhooks.router, tags=["Webhooks"])
 
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
+
 
 @app.get("/health")
 async def health_check():

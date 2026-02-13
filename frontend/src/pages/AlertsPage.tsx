@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Bell, Plus, Mail, MessageSquare, Webhook, CheckCircle } from 'lucide-react'
 import api from '../services/api'
+import { useAuthStore } from '../lib/stores/auth-store'
 
 type Tab = 'active' | 'conditions' | 'policies' | 'channels' | 'muting'
 
@@ -58,6 +59,7 @@ interface MutingRule {
 }
 
 export default function AlertsPage() {
+  const { currentProject } = useAuthStore()
   const [activeTab, setActiveTab] = useState<Tab>('active')
 
   const [activeAlerts, setActiveAlerts] = useState<ActiveAlert[]>([])
@@ -82,11 +84,11 @@ export default function AlertsPage() {
   })
 
   useEffect(() => {
-    if (activeTab !== 'active') return
+    if (activeTab !== 'active' || !currentProject?.id) return
     let cancelled = false
     setLoading((l) => ({ ...l, active: true }))
     setError((e) => ({ ...e, active: null }))
-    api.get<ActiveAlert[]>('/api/v1/alerts/active-alerts')
+    api.get<ActiveAlert[]>('/api/v1/alerts/active-alerts', { params: { project_id: currentProject.id } })
       .then((res) => {
         if (!cancelled) setActiveAlerts(res.data ?? [])
       })
@@ -97,14 +99,14 @@ export default function AlertsPage() {
         if (!cancelled) setLoading((l) => ({ ...l, active: false }))
       })
     return () => { cancelled = true }
-  }, [activeTab])
+  }, [activeTab, currentProject?.id])
 
   useEffect(() => {
-    if (activeTab !== 'conditions') return
+    if (activeTab !== 'conditions' || !currentProject?.id) return
     let cancelled = false
     setLoading((l) => ({ ...l, conditions: true }))
     setError((e) => ({ ...e, conditions: null }))
-    api.get<Condition[]>('/api/v1/alerts/conditions')
+    api.get<Condition[]>('/api/v1/alerts/conditions', { params: { project_id: currentProject.id } })
       .then((res) => {
         if (!cancelled) setConditions(res.data ?? [])
       })
@@ -115,14 +117,14 @@ export default function AlertsPage() {
         if (!cancelled) setLoading((l) => ({ ...l, conditions: false }))
       })
     return () => { cancelled = true }
-  }, [activeTab])
+  }, [activeTab, currentProject?.id])
 
   useEffect(() => {
-    if (activeTab !== 'policies') return
+    if (activeTab !== 'policies' || !currentProject?.id) return
     let cancelled = false
     setLoading((l) => ({ ...l, policies: true }))
     setError((e) => ({ ...e, policies: null }))
-    api.get<Policy[]>('/api/v1/alerts/policies')
+    api.get<Policy[]>('/api/v1/alerts/policies', { params: { project_id: currentProject.id } })
       .then((res) => {
         if (!cancelled) setPolicies(res.data ?? [])
       })
@@ -133,14 +135,14 @@ export default function AlertsPage() {
         if (!cancelled) setLoading((l) => ({ ...l, policies: false }))
       })
     return () => { cancelled = true }
-  }, [activeTab])
+  }, [activeTab, currentProject?.id])
 
   useEffect(() => {
-    if (activeTab !== 'channels') return
+    if (activeTab !== 'channels' || !currentProject?.id) return
     let cancelled = false
     setLoading((l) => ({ ...l, channels: true }))
     setError((e) => ({ ...e, channels: null }))
-    api.get<Channel[]>('/api/v1/alerts/channels')
+    api.get<Channel[]>('/api/v1/alerts/channels', { params: { project_id: currentProject.id } })
       .then((res) => {
         if (!cancelled) setChannels(res.data ?? [])
       })
@@ -151,14 +153,14 @@ export default function AlertsPage() {
         if (!cancelled) setLoading((l) => ({ ...l, channels: false }))
       })
     return () => { cancelled = true }
-  }, [activeTab])
+  }, [activeTab, currentProject?.id])
 
   useEffect(() => {
-    if (activeTab !== 'muting') return
+    if (activeTab !== 'muting' || !currentProject?.id) return
     let cancelled = false
     setLoading((l) => ({ ...l, muting: true }))
     setError((e) => ({ ...e, muting: null }))
-    api.get<MutingRule[]>('/api/v1/alerts/muting-rules')
+    api.get<MutingRule[]>('/api/v1/alerts/muting-rules', { params: { project_id: currentProject.id } })
       .then((res) => {
         if (!cancelled) setMutingRules(res.data ?? [])
       })
@@ -169,7 +171,7 @@ export default function AlertsPage() {
         if (!cancelled) setLoading((l) => ({ ...l, muting: false }))
       })
     return () => { cancelled = true }
-  }, [activeTab])
+  }, [activeTab, currentProject?.id])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'active', label: 'Active Alerts' },
@@ -226,6 +228,16 @@ export default function AlertsPage() {
       case 'webhook': return Webhook
       default: return Bell
     }
+  }
+
+  if (!currentProject?.id) {
+    return (
+      <div className="px-4 sm:px-0">
+        <div className="py-12 text-center text-gray-400">
+          Select a project to view alerts and notification settings.
+        </div>
+      </div>
+    )
   }
 
   return (

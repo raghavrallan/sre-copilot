@@ -2,10 +2,17 @@
 SRE Copilot Security Service
 """
 import logging
+import os
+import sys
+
+# Add shared to path and initialize Django BEFORE importing app modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+from shared.utils.database import setup_django
+setup_django()
+
 from fastapi import FastAPI
 
 from app.api import vulnerabilities
-from app.services.demo_data import generate_demo_vulnerabilities
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +24,13 @@ app = FastAPI(
 
 app.include_router(vulnerabilities.router, prefix="/vulnerabilities")
 
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
+
 
 @app.get("/health")
 async def health_check():
@@ -24,23 +38,10 @@ async def health_check():
     return {"status": "healthy", "service": "security-service"}
 
 
-def _seed_demo_data() -> None:
-    """Seed demo vulnerabilities on startup."""
-    from app.api.vulnerabilities import VULNERABILITIES
-
-    if VULNERABILITIES:
-        return
-
-    for v in generate_demo_vulnerabilities():
-        VULNERABILITIES[v["vuln_id"]] = v
-    logger.info("Seeded %d demo vulnerabilities", len(VULNERABILITIES))
-
-
 @app.on_event("startup")
 async def startup_event():
-    """Startup - seed demo data."""
+    """Startup event."""
     logger.info("Security Service starting up...")
-    _seed_demo_data()
 
 
 @app.on_event("shutdown")

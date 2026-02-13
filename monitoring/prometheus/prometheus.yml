@@ -36,7 +36,7 @@ scrape_configs:
   # SRE Copilot services
   - job_name: 'sre-copilot-api-gateway'
     static_configs:
-      - targets: ['api-gateway:8500']
+      - targets: ['api-gateway:8580']
         labels:
           service: 'api-gateway'
           env: 'development'
@@ -60,4 +60,53 @@ scrape_configs:
       - targets: ['ai-service:8503']
         labels:
           service: 'ai-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-integration-service'
+    static_configs:
+      - targets: ['integration-service:8504']
+        labels:
+          service: 'integration-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-websocket-service'
+    static_configs:
+      - targets: ['websocket-service:8505']
+        labels:
+          service: 'websocket-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-metrics-collector-service'
+    static_configs:
+      - targets: ['metrics-collector-service:8509']
+        labels:
+          service: 'metrics-collector-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-log-service'
+    static_configs:
+      - targets: ['log-service:8510']
+        labels:
+          service: 'log-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-alerting-service'
+    static_configs:
+      - targets: ['alerting-service:8511']
+        labels:
+          service: 'alerting-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-synthetic-service'
+    static_configs:
+      - targets: ['synthetic-service:8512']
+        labels:
+          service: 'synthetic-service'
+          env: 'development'
+
+  - job_name: 'sre-copilot-security-service'
+    static_configs:
+      - targets: ['security-service:8513']
+        labels:
+          service: 'security-service'
           env: 'development'

@@ -72,9 +72,10 @@ app.add_middleware(
 
 ## Configuration
 
-| Parameter       | Default                         | Description                    |
-|----------------|----------------------------------|--------------------------------|
-| `collector_url` | `http://metrics-collector:8509` | Metrics collector service URL  |
-| `service_name` | `unknown`                       | Service name for metrics       |
-| `flush_interval` | `10.0`                         | Seconds between batch flushes  |
-| `batch_size`   | `100`                           | Max metrics per batch          |
+| Parameter       | Default                             | Description                    |
+|----------------|--------------------------------------|--------------------------------|
+| `collector_url` | `http://localhost:8580/api/v1/ingest` | Metrics collector (API gateway) URL |
+| `service_name` | `unknown`                             | Service name for metrics       |
+| `flush_interval` | `10.0`                             | Seconds between batch flushes  |
+| `batch_size`   | `100`                                | Max metrics per batch          |
+| `api_key`      | `""`                                 | API key for authentication (required when using the public API gateway) |

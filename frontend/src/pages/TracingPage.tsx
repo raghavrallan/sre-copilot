@@ -171,6 +171,14 @@ export default function TracingPage() {
         <div className="rounded-lg border border-gray-700/50 bg-gray-800 p-12 text-center text-gray-400">
           Loading traces...
         </div>
+      ) : !error && sorted.length === 0 ? (
+        <div className="rounded-lg border border-gray-700/50 bg-gray-800 overflow-hidden">
+          <EmptyState
+            icon={<Activity size={32} />}
+            title="No traces yet"
+            description="Add OpenTelemetry instrumentation to your services to see distributed traces."
+          />
+        </div>
       ) : (
         <div className="rounded-lg border border-gray-700/50 bg-gray-800 overflow-hidden">
           <table className="min-w-full">
@@ -232,11 +240,6 @@ export default function TracingPage() {
               ))}
             </tbody>
           </table>
-          {sorted.length === 0 && !loading && (
-            <div className="px-6 py-12 text-center text-gray-500">
-              No traces found
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -1,12 +1,18 @@
 """Alert policies API endpoints."""
 import logging
-import uuid
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.storage import alert_policies
+from app.storage import (
+    create_policy,
+    list_policies,
+    get_policy,
+    update_policy,
+    delete_policy,
+    _get_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +25,7 @@ router = APIRouter(prefix="/policies", tags=["Alert Policies"])
 class CreatePolicyRequest(BaseModel):
     """Request body for creating an alert policy."""
 
+    project_id: str = Field(..., description="Project ID")
     name: str = Field(..., min_length=1, max_length=200)
     description: str = Field("", max_length=2000)
     condition_ids: List[str] = Field(default_factory=list)
@@ -40,60 +47,97 @@ class UpdatePolicyRequest(BaseModel):
 
 
 @router.post("")
-async def create_policy(request: CreatePolicyRequest) -> Dict[str, Any]:
+async def create_policy_endpoint(request: CreatePolicyRequest) -> Dict[str, Any]:
     """Create a new alert policy."""
-    from datetime import datetime
+    try:
+        project = _get_project(request.project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-    policy = {
-        "policy_id": str(uuid.uuid4()),
-        "name": request.name,
-        "description": request.description,
-        "condition_ids": request.condition_ids,
-        "incident_preference": request.incident_preference,
-        "enabled": request.enabled,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-    }
-    alert_policies.append(policy)
+    data = request.model_dump(exclude={"project_id"})
+    policy = await create_policy(
+        project_id=str(project.id),
+        tenant_id=str(project.tenant_id),
+        data=data,
+    )
     logger.info("Created alert policy: %s", policy["policy_id"])
     return policy
 
 
 @router.get("")
-async def list_policies(enabled: Optional[bool] = None) -> List[Dict[str, Any]]:
+async def list_policies_endpoint(
+    project_id: str,
+    enabled: Optional[bool] = None,
+) -> List[Dict[str, Any]]:
     """List all alert policies with optional filter."""
-    result = alert_policies
-    if enabled is not None:
-        result = [p for p in result if p.get("enabled") == enabled]
-    return result
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return await list_policies(
+        project_id=str(project.id),
+        enabled=enabled,
+    )
 
 
 @router.get("/{policy_id}")
-async def get_policy(policy_id: str) -> Dict[str, Any]:
+async def get_policy_endpoint(
+    policy_id: str,
+    project_id: str,
+) -> Dict[str, Any]:
     """Get a single alert policy by ID."""
-    for p in alert_policies:
-        if p.get("policy_id") == policy_id:
-            return p
-    raise HTTPException(status_code=404, detail="Policy not found")
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    policy = await get_policy(project_id=str(project.id), policy_id=policy_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return policy
 
 
 @router.put("/{policy_id}")
-async def update_policy(policy_id: str, request: UpdatePolicyRequest) -> Dict[str, Any]:
+async def update_policy_endpoint(
+    policy_id: str,
+    request: UpdatePolicyRequest,
+    project_id: str,
+) -> Dict[str, Any]:
     """Update an alert policy."""
-    for i, p in enumerate(alert_policies):
-        if p.get("policy_id") == policy_id:
-            update_data = request.model_dump(exclude_unset=True)
-            alert_policies[i] = {**p, **update_data}
-            logger.info("Updated alert policy: %s", policy_id)
-            return alert_policies[i]
-    raise HTTPException(status_code=404, detail="Policy not found")
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    update_data = request.model_dump(exclude_unset=True)
+    policy = await update_policy(
+        project_id=str(project.id),
+        policy_id=policy_id,
+        data=update_data,
+    )
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    logger.info("Updated alert policy: %s", policy_id)
+    return policy
 
 
 @router.delete("/{policy_id}")
-async def delete_policy(policy_id: str) -> Dict[str, str]:
+async def delete_policy_endpoint(
+    policy_id: str,
+    project_id: str,
+) -> Dict[str, str]:
     """Delete an alert policy."""
-    for i, p in enumerate(alert_policies):
-        if p.get("policy_id") == policy_id:
-            alert_policies.pop(i)
-            logger.info("Deleted alert policy: %s", policy_id)
-            return {"status": "deleted", "policy_id": policy_id}
-    raise HTTPException(status_code=404, detail="Policy not found")
+    try:
+        project = await _get_project(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    deleted = await delete_policy(
+        project_id=str(project.id),
+        policy_id=policy_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    logger.info("Deleted alert policy: %s", policy_id)
+    return {"status": "deleted", "policy_id": policy_id}

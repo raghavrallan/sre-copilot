@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Bug, RefreshCw } from 'lucide-react'
+import { Bug, RefreshCw, AlertTriangle } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts'
 import api from '../services/api'
 
@@ -233,10 +234,12 @@ export default function ErrorsPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-12 text-center">
-          <Bug className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-300 mb-2">No error groups</h3>
-          <p className="text-gray-400">No errors match the current filters.</p>
+        <div className="bg-gray-800 rounded-lg border border-gray-700/50">
+          <EmptyState
+            icon={<AlertTriangle size={32} />}
+            title="No errors tracked"
+            description="Install the SDK in your applications. Errors will appear here automatically."
+          />
         </div>
       ) : (
         <div className="space-y-3">

@@ -5,33 +5,24 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from asgiref.sync import sync_to_async
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from shared.models.observability import LogEntry as DjangoLogEntry
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/logs", tags=["Logs"])
 
-# In-memory log storage (populated on startup with demo data)
-_log_store: List[Dict[str, Any]] = []
-
-# Queue for live tail SSE
+# Queue for live tail SSE (in-memory for real-time streaming)
 _tail_queue: Optional[asyncio.Queue] = None
-
-
-def get_log_store() -> List[Dict[str, Any]]:
-    """Get the in-memory log store."""
-    return _log_store
-
-
-def set_log_store(logs: List[Dict[str, Any]]) -> None:
-    """Set the in-memory log store."""
-    global _log_store
-    _log_store = logs
-    logger.info("Log store initialized with %d entries", len(_log_store))
 
 
 def get_tail_queue() -> asyncio.Queue:
@@ -45,8 +36,8 @@ def get_tail_queue() -> asyncio.Queue:
 # --- Pydantic Models ---
 
 
-class LogEntry(BaseModel):
-    """Single log entry model."""
+class LogEntrySchema(BaseModel):
+    """Single log entry schema for request/response."""
 
     timestamp: Optional[str] = None
     level: str = "INFO"  # DEBUG, INFO, WARN, ERROR, FATAL
@@ -60,7 +51,9 @@ class LogEntry(BaseModel):
 class LogIngestRequest(BaseModel):
     """Bulk log ingestion request."""
 
-    logs: List[LogEntry]
+    project_id: str
+    tenant_id: str
+    logs: List[LogEntrySchema]
 
 
 class LogSearchParams(BaseModel):
@@ -79,69 +72,51 @@ class LogSearchParams(BaseModel):
 # --- Helper Functions ---
 
 
+def _parse_timestamp(ts: Optional[str]) -> datetime:
+    """Parse ISO timestamp string to datetime. Defaults to now if invalid/missing."""
+    if not ts:
+        return timezone.now()
+    parsed = parse_datetime(ts)
+    if parsed is None:
+        return timezone.now()
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed)
+    return parsed
+
+
+def _log_to_dict(entry: DjangoLogEntry) -> Dict[str, Any]:
+    """Convert Django LogEntry to dict for response."""
+    ts = entry.timestamp
+    timestamp_str = ts.isoformat() + "Z" if ts else None
+    return {
+        "timestamp": timestamp_str,
+        "level": entry.level,
+        "service_name": entry.service_name,
+        "message": entry.message,
+        "attributes": entry.attributes or {},
+        "trace_id": entry.trace_id or None,
+        "span_id": entry.span_id or None,
+    }
+
+
 def _normalize_message(msg: str) -> str:
     """Normalize message for pattern grouping: strip numbers, UUIDs, IPs."""
     if not msg:
         return ""
-    # Replace UUIDs (with or without hyphens)
     normalized = re.sub(
         r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
         "<uuid>",
         msg,
     )
-    # Replace standalone numbers
     normalized = re.sub(r"\b\d+\b", "<num>", normalized)
-    # Replace IP addresses
     normalized = re.sub(
         r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
         "<ip>",
         normalized,
     )
-    # Replace hex IDs
     normalized = re.sub(r"\b[0-9a-fA-F]{20,}\b", "<id>", normalized)
-    # Collapse whitespace
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
-
-
-def _log_to_dict(entry: LogEntry) -> Dict[str, Any]:
-    """Convert LogEntry to dict for storage."""
-    return {
-        "timestamp": entry.timestamp,
-        "level": entry.level,
-        "service_name": entry.service_name,
-        "message": entry.message,
-        "attributes": entry.attributes,
-        "trace_id": entry.trace_id,
-        "span_id": entry.span_id,
-    }
-
-
-def _filter_logs(
-    logs: List[Dict[str, Any]],
-    query: Optional[str] = None,
-    service: Optional[str] = None,
-    level: Optional[str] = None,
-    time_from: Optional[str] = None,
-    time_to: Optional[str] = None,
-    trace_id: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """Apply filters to log list."""
-    result = logs
-    if query:
-        q = query.lower()
-        result = [log for log in result if q in (log.get("message") or "").lower()]
-    if service:
-        result = [log for log in result if log.get("service_name") == service]
-    if level:
-        result = [log for log in result if log.get("level") == level.upper()]
-    if time_from:
-        result = [log for log in result if (log.get("timestamp") or "") >= time_from]
-    if time_to:
-        result = [log for log in result if (log.get("timestamp") or "") <= time_to]
-    if trace_id:
-        result = [log for log in result if log.get("trace_id") == trace_id]
-    return result
 
 
 # --- Endpoints ---
@@ -150,21 +125,53 @@ def _filter_logs(
 @router.post("/ingest")
 async def ingest_logs(request: LogIngestRequest) -> Dict[str, Any]:
     """Bulk log ingestion."""
-    store = get_log_store()
+    project_id = request.project_id
+    tenant_id = request.tenant_id
     queue = get_tail_queue()
+
     for entry in request.logs:
-        data = _log_to_dict(entry)
-        store.append(data)
+        timestamp_dt = _parse_timestamp(entry.timestamp)
+        level = (entry.level or "INFO").upper()
+        trace_id = entry.trace_id or ""
+        span_id = entry.span_id or ""
+        await DjangoLogEntry.objects.acreate(
+            project_id=project_id,
+            tenant_id=tenant_id,
+            timestamp=timestamp_dt,
+            level=level,
+            service_name=entry.service_name,
+            message=entry.message,
+            attributes=entry.attributes or {},
+            trace_id=trace_id,
+            span_id=span_id,
+        )
+        # Push to tail queue for live SSE
+        data = {
+            "timestamp": entry.timestamp,
+            "level": level,
+            "service_name": entry.service_name,
+            "message": entry.message,
+            "attributes": entry.attributes or {},
+            "trace_id": entry.trace_id,
+            "span_id": entry.span_id,
+        }
         try:
             queue.put_nowait(data)
         except asyncio.QueueFull:
             pass
-    logger.info("Ingested %d log entries", len(request.logs))
-    return {"ingested": len(request.logs), "total": len(store)}
+
+    @sync_to_async
+    def get_total():
+        return DjangoLogEntry.objects.filter(project_id=project_id).count()
+
+    total = await get_total()
+    logger.info("Ingested %d log entries for project %s", len(request.logs), project_id)
+    return {"ingested": len(request.logs), "total": total}
 
 
 @router.get("/search")
 async def search_logs(
+    project_id: str = Query(..., description="Project ID to filter logs"),
     query: Optional[str] = Query(None),
     service: Optional[str] = Query(None),
     level: Optional[str] = Query(None),
@@ -175,18 +182,36 @@ async def search_logs(
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     """Full-text search with filters. Returns paginated results."""
-    store = get_log_store()
-    filtered = _filter_logs(
-        store,
-        query=query,
-        service=service,
-        level=level,
-        time_from=time_from,
-        time_to=time_to,
-        trace_id=trace_id,
-    )
-    total = len(filtered)
-    items = filtered[offset : offset + limit]
+
+    @sync_to_async
+    def run_search():
+        entries = DjangoLogEntry.objects.filter(project_id=project_id)
+        if service:
+            entries = entries.filter(service_name=service)
+        if level:
+            entries = entries.filter(level=level.upper())
+        if time_from:
+            ts_from = parse_datetime(time_from)
+            if ts_from:
+                if timezone.is_naive(ts_from):
+                    ts_from = timezone.make_aware(ts_from)
+                entries = entries.filter(timestamp__gte=ts_from)
+        if time_to:
+            ts_to = parse_datetime(time_to)
+            if ts_to:
+                if timezone.is_naive(ts_to):
+                    ts_to = timezone.make_aware(ts_to)
+                entries = entries.filter(timestamp__lte=ts_to)
+        if trace_id:
+            entries = entries.filter(trace_id=trace_id)
+        if query:
+            entries = entries.filter(message__icontains=query)
+        total = entries.count()
+        entries = entries[offset : offset + limit]
+        return list(entries), total
+
+    items_queryset, total = await run_search()
+    items = [_log_to_dict(e) for e in items_queryset]
     return {
         "items": items,
         "total": total,
@@ -211,7 +236,7 @@ async def tail_logs(
                     break
                 if service and log.get("service_name") != service:
                     continue
-                if level and log.get("level") != level.upper():
+                if level and log.get("level") != (level or "").upper():
                     continue
                 yield f"data: {json.dumps(log)}\n\n"
         except asyncio.TimeoutError:
@@ -231,32 +256,40 @@ async def tail_logs(
 
 
 @router.get("/patterns")
-async def get_log_patterns() -> Dict[str, Any]:
+async def get_log_patterns(
+    project_id: str = Query(..., description="Project ID to filter logs"),
+) -> Dict[str, Any]:
     """ML-grouped log patterns. Groups logs by normalized message."""
-    store = get_log_store()
+
+    @sync_to_async
+    def run_patterns():
+        entries = DjangoLogEntry.objects.filter(project_id=project_id)
+        return list(entries.values("message", "level", "timestamp"))
+
+    rows = await run_patterns()
     pattern_map: Dict[str, Dict[str, Any]] = {}
 
-    for log in store:
-        msg = log.get("message") or ""
+    for row in rows:
+        msg = row.get("message") or ""
         normalized = _normalize_message(msg)
         if not normalized:
             continue
+        ts = row.get("timestamp")
+        ts_str = ts.isoformat() + "Z" if ts else None
         if normalized not in pattern_map:
             pattern_map[normalized] = {
                 "pattern": normalized,
                 "count": 0,
-                "level": log.get("level", "INFO"),
+                "level": row.get("level", "INFO"),
                 "sample": msg,
-                "first_seen": log.get("timestamp"),
-                "last_seen": log.get("timestamp"),
+                "first_seen": ts_str,
+                "last_seen": ts_str,
             }
         p = pattern_map[normalized]
         p["count"] += 1
-        p["last_seen"] = log.get("timestamp") or p["last_seen"]
-        if not p["first_seen"] or (
-            log.get("timestamp") and log["timestamp"] < (p["first_seen"] or "")
-        ):
-            p["first_seen"] = log.get("timestamp")
+        p["last_seen"] = ts_str or p["last_seen"]
+        if not p["first_seen"] or (ts_str and ts_str < (p["first_seen"] or "")):
+            p["first_seen"] = ts_str
 
     patterns = sorted(
         pattern_map.values(),
@@ -267,26 +300,49 @@ async def get_log_patterns() -> Dict[str, Any]:
 
 
 @router.get("/services")
-async def list_services() -> Dict[str, Any]:
+async def list_services(
+    project_id: str = Query(..., description="Project ID to filter logs"),
+) -> Dict[str, Any]:
     """List all services that have reported logs."""
-    store = get_log_store()
-    services = sorted(set(log.get("service_name", "") for log in store if log.get("service_name")))
+
+    @sync_to_async
+    def run_services():
+        return list(
+            DjangoLogEntry.objects.filter(project_id=project_id)
+            .values_list("service_name", flat=True)
+            .distinct()
+        )
+
+    names = await run_services()
+    services = sorted(n for n in names if n)
     return {"services": services}
 
 
 @router.get("/stats")
-async def get_stats() -> Dict[str, Any]:
+async def get_stats(
+    project_id: str = Query(..., description="Project ID to filter logs"),
+) -> Dict[str, Any]:
     """Log statistics: count by level, count by service, total."""
-    store = get_log_store()
-    by_level: Dict[str, int] = {}
-    by_service: Dict[str, int] = {}
-    for log in store:
-        level = log.get("level", "INFO")
-        by_level[level] = by_level.get(level, 0) + 1
-        svc = log.get("service_name", "unknown")
-        by_service[svc] = by_service.get(svc, 0) + 1
+
+    @sync_to_async
+    def run_stats():
+        from django.db.models import Count
+
+        entries = DjangoLogEntry.objects.filter(project_id=project_id)
+        total = entries.count()
+        by_level = dict(
+            entries.values("level").annotate(c=Count("id")).values_list("level", "c")
+        )
+        by_service = dict(
+            entries.values("service_name")
+            .annotate(c=Count("id"))
+            .values_list("service_name", "c")
+        )
+        return total, by_level, by_service
+
+    total, by_level, by_service = await run_stats()
     return {
-        "total": len(store),
+        "total": total,
         "by_level": by_level,
         "by_service": by_service,
     }

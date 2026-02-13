@@ -4,6 +4,10 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 redis==5.0.1
 python-dotenv==1.0.0
+django>=4.2
+asgiref>=3.7
+psycopg2-binary>=2.9
+prometheus-fastapi-instrumentator>=6.0.0
 
 pytest==7.4.4
 pytest-asyncio==0.23.3

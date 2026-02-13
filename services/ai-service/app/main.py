@@ -28,6 +28,13 @@ app.include_router(analytics.router, tags=["Analytics"])
 app.include_router(anomaly.router, prefix="/anomaly", tags=["Anomaly Detection"])
 app.include_router(correlation.router, prefix="/correlation", tags=["Incident Correlation"])
 
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
+
 
 @app.get("/health")
 async def health_check():

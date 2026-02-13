@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, Search, RefreshCw } from 'lucide-react'
+import { FileText, Search, RefreshCw, Terminal } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 import LogList, { LogEntry } from '../components/logs/LogList'
 import LogPatterns, { LogPattern } from '../components/logs/LogPatterns'
 import api from '../services/api'
@@ -298,6 +299,12 @@ export default function LogsPage() {
                     Retry
                   </button>
                 </div>
+              ) : logs.length === 0 ? (
+                <EmptyState
+                  icon={<Terminal size={32} />}
+                  title="No logs yet"
+                  description="Configure log forwarding from your applications to start seeing logs here."
+                />
               ) : (
                 <>
                   <div className="max-h-[500px] overflow-y-auto">

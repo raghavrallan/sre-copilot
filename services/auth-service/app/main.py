@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 from shared.utils.database import setup_django
 setup_django()
 
-from app.api import auth, projects, monitoring
+from app.api import auth, projects, monitoring, api_keys, internal
 from app.core.config import settings
 
 # Initialize FastAPI app
@@ -29,6 +29,15 @@ app = FastAPI(
 app.include_router(auth.router, tags=["Auth"])
 app.include_router(projects.router, tags=["Projects"])
 app.include_router(monitoring.router, tags=["Monitoring"])
+app.include_router(api_keys.router, tags=["API Keys"])
+app.include_router(internal.router, tags=["Internal"])
+
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
 
 
 @app.get("/health")

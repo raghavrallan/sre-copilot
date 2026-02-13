@@ -52,6 +52,7 @@ export interface BrowserIngestPayload {
 /** SDK configuration */
 export interface SREBrowserSDKConfig {
   collectorUrl: string;
+  apiKey?: string;
   appName?: string;
   sampleRate?: number;
   enabled?: boolean;
@@ -222,16 +223,28 @@ function flush(): void {
   queue.page_load = undefined;
   queue.xhr_events = [];
 
-  const endpoint = `${config.collectorUrl.replace(/\/$/, "")}/browser/ingest`;
+  const endpoint = `${config.collectorUrl.replace(/\/$/, "")}/browser`;
   const body = JSON.stringify(payload);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (config.apiKey) {
+    headers["X-API-Key"] = config.apiKey;
+  }
 
-  if (navigator.sendBeacon) {
+  // sendBeacon does not support custom headers; use fetch when API key is required
+  if (config.apiKey) {
+    fetch(endpoint, {
+      method: "POST",
+      body,
+      headers,
+      keepalive: true,
+    }).catch(() => {});
+  } else if (navigator.sendBeacon) {
     navigator.sendBeacon(endpoint, body);
   } else {
     fetch(endpoint, {
       method: "POST",
       body,
-      headers: { "Content-Type": "application/json" },
+      headers,
       keepalive: true,
     }).catch(() => {});
   }

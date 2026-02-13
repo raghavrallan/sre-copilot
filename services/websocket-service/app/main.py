@@ -23,6 +23,13 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# Prometheus instrumentation for platform health monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    pass  # prometheus not installed, skip
+
 # Global connection manager
 connection_manager = ConnectionManager()
 redis_pubsub = RedisPubSub()

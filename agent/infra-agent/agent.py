@@ -24,7 +24,8 @@ logging.basicConfig(
 )
 
 # Configuration from env
-COLLECTOR_URL = os.getenv("COLLECTOR_URL", "http://localhost:8001")
+COLLECTOR_URL = os.getenv("COLLECTOR_URL", "http://localhost:8580/api/v1/ingest")
+API_KEY = os.getenv("API_KEY", "")
 HOSTNAME_OVERRIDE = os.getenv("HOSTNAME_OVERRIDE", "")
 COLLECT_INTERVAL = int(os.getenv("COLLECT_INTERVAL", "15"))
 COLLECT_DOCKER = os.getenv("COLLECT_DOCKER", "true").lower() in ("true", "1", "yes")
