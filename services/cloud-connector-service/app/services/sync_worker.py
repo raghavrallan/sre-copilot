@@ -3,6 +3,7 @@ Background worker that periodically syncs cloud resources
 """
 import asyncio
 import logging
+from asgiref.sync import sync_to_async
 from django.utils import timezone
 
 from shared.models import CloudConnection
@@ -33,32 +34,56 @@ async def run_sync_loop():
             logger.exception("Sync loop error: %s", e)
 
 
+@sync_to_async
+def _get_active_connections():
+    """Fetch active connections from DB in a sync context."""
+    return list(CloudConnection.objects.filter(is_active=True))
+
+
+@sync_to_async
+def _update_connection_status(conn_id, **fields):
+    """Update connection fields in a sync context."""
+    try:
+        conn = CloudConnection.objects.get(id=conn_id)
+        for key, value in fields.items():
+            setattr(conn, key, value)
+        conn.save(update_fields=list(fields.keys()))
+    except CloudConnection.DoesNotExist:
+        logger.warning("Connection %s not found during status update", conn_id)
+
+
 async def _sync_all_connections():
     """Sync resources and metrics for all active cloud connections."""
-    connections = list(CloudConnection.objects.filter(is_active=True))
+    connections = await _get_active_connections()
     for conn in connections:
         try:
-            conn.status = "syncing"
-            conn.status_message = ""
-            conn.save(update_fields=["status", "status_message"])
+            await _update_connection_status(
+                conn.id, status="syncing", status_message=""
+            )
 
             if conn.provider not in PROVIDER_SYNC:
-                conn.status = "error"
-                conn.status_message = f"Unknown provider: {conn.provider}"
-                conn.save(update_fields=["status", "status_message"])
+                await _update_connection_status(
+                    conn.id,
+                    status="error",
+                    status_message=f"Unknown provider: {conn.provider}",
+                )
                 continue
 
             sync_resources, sync_metrics = PROVIDER_SYNC[conn.provider]
             resources = await sync_resources(conn)
             metrics = await sync_metrics(conn)
 
-            conn.status = "connected"
-            conn.status_message = ""
-            conn.resources_count = len(resources)
-            conn.last_sync_at = timezone.now()
-            conn.save(update_fields=["status", "status_message", "resources_count", "last_sync_at"])
+            await _update_connection_status(
+                conn.id,
+                status="connected",
+                status_message="",
+                resources_count=len(resources),
+                last_sync_at=timezone.now(),
+            )
         except Exception as e:
-            conn.status = "error"
-            conn.status_message = str(e)[:500]
-            conn.save(update_fields=["status", "status_message"])
+            await _update_connection_status(
+                conn.id,
+                status="error",
+                status_message=str(e)[:500],
+            )
             logger.warning("Sync failed for connection %s: %s", conn.id, e)

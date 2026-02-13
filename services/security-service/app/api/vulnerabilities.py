@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from shared.models.observability import Vulnerability as VulnerabilityModel
 from shared.models.project import Project
+from shared.utils.responses import validate_project_id, validate_uuid as _validate_uuid_shared
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +84,7 @@ class OverviewResponse(BaseModel):
 
 def _validate_uuid(value: str) -> str:
     """Validate and return UUID string."""
-    try:
-        UUID(value)
-        return value
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid vulnerability ID format")
+    return _validate_uuid_shared(value, "vulnerability ID")
 
 
 def _vuln_model_to_response(v: VulnerabilityModel) -> Vulnerability:

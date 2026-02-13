@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import ErrorGroup, ErrorOccurrence, ServiceRegistration
+from shared.utils.responses import validate_project_id
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +140,7 @@ async def list_error_groups(
 ) -> list[dict[str, Any]]:
     """List error groups with occurrence count and trend."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -174,8 +174,7 @@ async def get_error_group(
 ) -> dict[str, Any]:
     """Get error group detail with occurrences."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -220,8 +219,7 @@ async def update_error_triage(
 ) -> dict[str, Any]:
     """Update status (unresolved/investigating/resolved/ignored), assignee, notes."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _update():

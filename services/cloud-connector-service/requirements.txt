@@ -10,8 +10,9 @@ google-cloud-monitoring>=2.0.0
 google-cloud-resource-manager>=1.0.0
 google-cloud-compute>=1.0.0
 cryptography>=42.0.0
-Django>=4.2
-psycopg2-binary>=2.9
+Django==5.0.1
+psycopg2-binary==2.9.9
+asgiref>=3.7.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 python-dotenv==1.0.0

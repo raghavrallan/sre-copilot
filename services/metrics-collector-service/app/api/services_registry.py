@@ -12,6 +12,7 @@ from shared.models.observability import (
     Transaction,
     ServiceRegistration,
 )
+from shared.utils.responses import validate_project_id
 
 router = APIRouter()
 
@@ -23,11 +24,7 @@ async def get_services_registry(
 ) -> list[dict[str, Any]]:
     """Return list of services registered for the project (from metrics, traces, or ServiceRegistration)."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(
-            status_code=400,
-            detail="project_id query param or X-Project-ID header required",
-        )
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():

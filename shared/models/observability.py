@@ -91,7 +91,7 @@ class Span(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey('shared.Project', on_delete=models.CASCADE, related_name='spans')
     tenant = models.ForeignKey('shared.Tenant', on_delete=models.CASCADE)
-    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, related_name='spans', null=True, blank=True)
+    trace = models.ForeignKey(Trace, on_delete=models.CASCADE, related_name='spans', null=True, blank=True, db_column='trace_fk_id')
 
     trace_id = models.CharField(max_length=128, db_index=True)
     span_id = models.CharField(max_length=128, db_index=True)

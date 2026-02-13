@@ -15,6 +15,11 @@ from shared.models.observability import (
     Transaction,
     ServiceRegistration,
 )
+from shared.utils.responses import (
+    success_response,
+    validate_project_id,
+    validate_required_fields,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,11 +138,10 @@ async def ingest_metrics(request: Request) -> dict[str, Any]:
 async def list_services(
     request: Request,
     project_id: Optional[str] = Query(None),
-) -> list[str]:
+):
     """List all services that have reported metrics."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -168,11 +172,10 @@ async def list_services(
 async def list_services_overview(
     request: Request,
     project_id: Optional[str] = Query(None),
-) -> list[dict[str, Any]]:
+):
     """List all services with overview metrics for APM dashboard."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _overview():
@@ -217,11 +220,10 @@ async def get_service_overview(
     service_name: str,
     request: Request,
     project_id: Optional[str] = Query(None),
-) -> dict[str, Any]:
+):
     """Service overview: throughput, avg response time, error rate, apdex."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -258,11 +260,10 @@ async def get_transactions(
     request: Request,
     project_id: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
-) -> dict[str, Any]:
+):
     """Transaction list with p50/p95/p99 latencies."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -311,11 +312,10 @@ async def get_slow_transactions(
     project_id: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     min_duration_ms: float = Query(200, ge=0),
-) -> list[dict[str, Any]]:
+):
     """Slowest transactions for a service."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -348,11 +348,10 @@ async def get_database_queries(
     service_name: str,
     request: Request,
     project_id: Optional[str] = Query(None),
-) -> dict[str, Any]:
+):
     """Database query metrics for a service."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -389,11 +388,10 @@ async def get_external_services(
     service_name: str,
     request: Request,
     project_id: Optional[str] = Query(None),
-) -> dict[str, Any]:
+):
     """External service call metrics for a service."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():

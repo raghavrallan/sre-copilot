@@ -3,7 +3,8 @@ CRUD endpoints for CI/CD connections
 """
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from asgiref.sync import sync_to_async
 
 from shared.models import CICDConnection, Project
 from app.utils.encryption import encrypt_credentials, decrypt_credentials
@@ -62,12 +63,51 @@ def _connection_to_response(conn: CICDConnection, include_credentials: bool = Fa
     return data
 
 
+@sync_to_async
 def _get_project(project_id: str) -> Project:
     """Get project by ID or raise 404."""
     try:
         return Project.objects.get(id=project_id)
     except Project.DoesNotExist:
         raise HTTPException(status_code=404, detail="Project not found")
+
+
+@sync_to_async
+def _create_connection(project, tenant, provider, name, encrypted, config) -> CICDConnection:
+    return CICDConnection.objects.create(
+        project=project,
+        tenant=tenant,
+        provider=provider,
+        name=name,
+        credentials_encrypted=encrypted,
+        config=config,
+        is_active=True,
+        status="pending",
+    )
+
+
+@sync_to_async
+def _list_connections(project_id: str) -> List[dict]:
+    conns = CICDConnection.objects.filter(project_id=project_id).order_by("-created_at")
+    return [_connection_to_response(c) for c in conns]
+
+
+@sync_to_async
+def _get_connection(connection_id: str, project_id: str) -> CICDConnection:
+    try:
+        return CICDConnection.objects.get(id=connection_id, project_id=project_id)
+    except CICDConnection.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+
+@sync_to_async
+def _save_connection(conn):
+    conn.save()
+
+
+@sync_to_async
+def _delete_connection(conn):
+    conn.delete()
 
 
 @router.post("", status_code=201)
@@ -79,17 +119,15 @@ async def create_connection(
     valid_providers = ("github", "azure_devops", "gitlab", "jenkins", "bitbucket")
     if body.provider not in valid_providers:
         raise HTTPException(status_code=400, detail=f"provider must be one of {valid_providers}")
-    project = _get_project(project_id)
+    project = await _get_project(project_id)
     encrypted = encrypt_credentials(body.credentials)
-    conn = CICDConnection.objects.create(
+    conn = await _create_connection(
         project=project,
         tenant=project.tenant,
         provider=body.provider,
         name=body.name,
-        credentials_encrypted=encrypted,
+        encrypted=encrypted,
         config=body.config or {},
-        is_active=True,
-        status="pending",
     )
     return _connection_to_response(conn)
 
@@ -99,9 +137,8 @@ async def list_connections(
     project_id: str = Query(..., description="Project ID"),
 ):
     """List connections for a project. Never returns credentials."""
-    _get_project(project_id)
-    conns = CICDConnection.objects.filter(project_id=project_id).order_by("-created_at")
-    return {"connections": [_connection_to_response(c) for c in conns]}
+    await _get_project(project_id)
+    return {"connections": await _list_connections(project_id)}
 
 
 @router.get("/{connection_id}")
@@ -110,11 +147,8 @@ async def get_connection(
     project_id: str = Query(..., description="Project ID"),
 ):
     """Get a single connection. Never returns credentials."""
-    _get_project(project_id)
-    try:
-        conn = CICDConnection.objects.get(id=connection_id, project_id=project_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    await _get_project(project_id)
+    conn = await _get_connection(connection_id, project_id)
     return _connection_to_response(conn)
 
 
@@ -125,11 +159,8 @@ async def update_connection(
     project_id: str = Query(..., description="Project ID"),
 ):
     """Update a connection."""
-    _get_project(project_id)
-    try:
-        conn = CICDConnection.objects.get(id=connection_id, project_id=project_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    await _get_project(project_id)
+    conn = await _get_connection(connection_id, project_id)
     if body.name is not None:
         conn.name = body.name
     if body.config is not None:
@@ -138,7 +169,7 @@ async def update_connection(
         conn.is_active = body.is_active
     if body.credentials is not None:
         conn.credentials_encrypted = encrypt_credentials(body.credentials)
-    conn.save()
+    await _save_connection(conn)
     return _connection_to_response(conn)
 
 
@@ -148,12 +179,9 @@ async def delete_connection(
     project_id: str = Query(..., description="Project ID"),
 ):
     """Delete a connection."""
-    _get_project(project_id)
-    try:
-        conn = CICDConnection.objects.get(id=connection_id, project_id=project_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
-    conn.delete()
+    await _get_project(project_id)
+    conn = await _get_connection(connection_id, project_id)
+    await _delete_connection(conn)
     return {"status": "deleted", "id": connection_id}
 
 
@@ -163,7 +191,7 @@ async def test_connection(
     project_id: str = Query(..., description="Project ID"),
 ):
     """Test connection without saving. Validates credentials against CI/CD provider."""
-    _get_project(project_id)
+    await _get_project(project_id)
     if body.provider not in PROVIDER_TESTERS:
         raise HTTPException(
             status_code=400,
@@ -188,11 +216,8 @@ async def list_pipelines(
     org: Optional[str] = Query(None, description="Organization (GitHub org / Azure DevOps org)"),
 ):
     """List pipelines/repos for a connection. For GitHub: org required. For Azure DevOps: org and project in config."""
-    _get_project(project_id)
-    try:
-        conn = CICDConnection.objects.get(id=connection_id, project_id=project_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    await _get_project(project_id)
+    conn = await _get_connection(connection_id, project_id)
     creds = decrypt_credentials(conn.credentials_encrypted)
     config = conn.config or {}
     org_val = org or config.get("org")
@@ -223,11 +248,8 @@ async def list_runs(
     limit: int = Query(20, ge=1, le=100),
 ):
     """List workflow/pipeline runs for a connection."""
-    _get_project(project_id)
-    try:
-        conn = CICDConnection.objects.get(id=connection_id, project_id=project_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    await _get_project(project_id)
+    conn = await _get_connection(connection_id, project_id)
     creds = decrypt_credentials(conn.credentials_encrypted)
     config = conn.config or {}
     org_val = config.get("org")

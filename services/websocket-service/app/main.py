@@ -3,6 +3,7 @@ WebSocket Service - Real-time bidirectional communication
 """
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import json
 import asyncio
@@ -21,6 +22,21 @@ app = FastAPI(
     title="WebSocket Service",
     description="Real-time bidirectional communication for SRE Copilot",
     version="2.0.0"
+)
+
+# CORS - allow frontend origins to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "https://sre-copilot.pages.dev",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Prometheus instrumentation for platform health monitoring
@@ -86,7 +102,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
         "tenantId": "uuid"
     }
     """
+    logger.info("WebSocket connection attempt from %s", websocket.client)
     await websocket.accept()
+    logger.info("WebSocket accepted for %s", websocket.client)
 
     client_id = None
     tenant_id = None

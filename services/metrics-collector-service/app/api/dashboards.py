@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import Dashboard
+from shared.utils.responses import validate_project_id, validate_required_fields
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +48,9 @@ class UpdateDashboardRequest(BaseModel):
 async def create_dashboard(request: Request) -> dict[str, Any]:
     """Create dashboard. project_id and tenant_id from body."""
     body = await request.json()
+    validate_required_fields(body, ["project_id", "tenant_id", "name"])
     project_id = body.get("project_id")
     tenant_id = body.get("tenant_id")
-    if not project_id or not tenant_id:
-        raise HTTPException(status_code=400, detail="project_id and tenant_id are required")
 
     name = body.get("name", "")
     description = body.get("description", "")
@@ -99,8 +99,7 @@ async def list_dashboards(
 ) -> list[dict[str, Any]]:
     """List dashboards."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -133,8 +132,7 @@ async def get_dashboard(
 ) -> dict[str, Any]:
     """Get dashboard by ID."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -166,8 +164,7 @@ async def update_dashboard(
 ) -> dict[str, Any]:
     """Update dashboard."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     body = await request.json()
 
@@ -212,8 +209,7 @@ async def delete_dashboard(
 ) -> dict:
     """Delete dashboard."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _delete():

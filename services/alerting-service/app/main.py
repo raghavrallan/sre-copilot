@@ -17,6 +17,7 @@ setup_django()
 
 from fastapi import FastAPI
 
+from shared.utils.responses import install_validation_handler
 from app.api import alert_conditions, alert_policies, notification_channels, muting_rules, active_alerts
 from app.services.evaluator import evaluate_all_conditions
 
@@ -34,6 +35,9 @@ app.include_router(alert_policies.router)
 app.include_router(notification_channels.router)
 app.include_router(muting_rules.router)
 app.include_router(active_alerts.router)
+
+# Install centralized 422->400 validation error handler
+install_validation_handler(app)
 
 # Prometheus instrumentation for platform health monitoring
 try:

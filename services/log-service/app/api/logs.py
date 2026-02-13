@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from shared.models.observability import LogEntry as DjangoLogEntry
+from shared.utils.responses import validate_project_id
 
 logger = logging.getLogger(__name__)
 

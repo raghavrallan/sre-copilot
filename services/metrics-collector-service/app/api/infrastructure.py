@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import HostMetric
+from shared.utils.responses import validate_project_id
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +105,7 @@ async def list_hosts(
 ) -> list:
     """List all hosts with latest metrics."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -152,8 +152,7 @@ async def get_host_detail(
 ) -> dict[str, Any]:
     """Host detail with metric history."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -190,8 +189,7 @@ async def get_host_processes(
 ) -> list:
     """Process list for host."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -217,8 +215,7 @@ async def get_host_containers(
 ) -> list:
     """Container list for host."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():

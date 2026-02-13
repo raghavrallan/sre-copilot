@@ -7,14 +7,20 @@ import httpx
 
 from app.core.config import settings
 from app.api.proxy import get_internal_headers, get_error_message, get_current_user_from_token
+from shared.utils.responses import validate_project_id
 
 router = APIRouter()
 
 
 def get_project_params(user: dict, extra_params: dict = None) -> dict:
-    """Build params dict with project_id from user, merged with any extra query params."""
+    """Build params dict with project_id from user, merged with any extra query params.
+
+    Raises HTTPException 400 if project_id is missing or empty.
+    """
     params = dict(extra_params) if extra_params else {}
-    params["project_id"] = user.get("project_id", "")
+    pid = user.get("project_id", "")
+    validate_project_id(pid, source="user context")
+    params["project_id"] = pid
     return params
 
 
@@ -736,7 +742,7 @@ async def get_active_anomalies(request: Request, user=Depends(get_current_user_f
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AI_SERVICE_URL}/anomaly/active",
-            params=dict(request.query_params),
+            params=get_project_params(user, dict(request.query_params)),
             headers=get_internal_headers()
         )
         if response.status_code != 200:
@@ -754,6 +760,7 @@ async def detect_anomaly(request: Request, user=Depends(get_current_user_from_to
         response = await client.post(
             f"{settings.AI_SERVICE_URL}/anomaly/detect",
             json=body,
+            params=get_project_params(user),
             headers=get_internal_headers()
         )
         if response.status_code not in (200, 201):
@@ -769,7 +776,7 @@ async def get_correlation_groups(request: Request, user=Depends(get_current_user
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.get(
             f"{settings.AI_SERVICE_URL}/correlation/groups",
-            params=dict(request.query_params),
+            params=get_project_params(user, dict(request.query_params)),
             headers=get_internal_headers()
         )
         if response.status_code != 200:

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from shared.models.observability import SyntheticMonitor as SyntheticMonitorModel
 from shared.models.observability import SyntheticResult as SyntheticResultModel
 from shared.models.project import Project
+from shared.utils.responses import validate_uuid as _validate_uuid_shared
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +100,7 @@ class SLAReport(BaseModel):
 
 def _validate_uuid(value: str) -> str:
     """Validate and return UUID string."""
-    try:
-        UUID(value)
-        return value
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid monitor ID format")
+    return _validate_uuid_shared(value, "monitor ID")
 
 
 def _monitor_type_api_to_model(t: str) -> str:

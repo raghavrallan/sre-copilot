@@ -2,6 +2,7 @@
 CRUD endpoints for cloud connections
 """
 import uuid
+from asgiref.sync import sync_to_async
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
@@ -67,6 +68,7 @@ def _connection_to_response(conn: CloudConnection, include_credentials: bool = F
     return data
 
 
+@sync_to_async
 def _get_project(project_id: str) -> Project:
     """Get project by ID or raise 404."""
     try:
@@ -75,16 +77,8 @@ def _get_project(project_id: str) -> Project:
         raise HTTPException(status_code=404, detail="Project not found")
 
 
-@router.post("", status_code=201)
-async def create_connection(
-    body: CreateConnectionRequest,
-    project_id: str = Query(..., description="Project ID"),
-):
-    """Create a cloud connection. Credentials are encrypted before storage."""
-    if body.provider not in ("azure", "aws", "gcp"):
-        raise HTTPException(status_code=400, detail="provider must be azure, aws, or gcp")
-    project = _get_project(project_id)
-    encrypted = encrypt_credentials(body.credentials)
+@sync_to_async
+def _create_connection(project, body, encrypted):
     conn = CloudConnection.objects.create(
         project=project,
         tenant=project.tenant,
@@ -98,38 +92,23 @@ async def create_connection(
     return _connection_to_response(conn)
 
 
-@router.get("")
-async def list_connections(
-    project_id: str = Query(..., description="Project ID"),
-):
-    """List connections for a project. Never returns credentials."""
-    _get_project(project_id)
+@sync_to_async
+def _list_connections(project_id):
     conns = CloudConnection.objects.filter(project_id=project_id).order_by("-created_at")
     return {"connections": [_connection_to_response(c) for c in conns]}
 
 
-@router.get("/{connection_id}")
-async def get_connection(
-    connection_id: str,
-    project_id: str = Query(..., description="Project ID"),
-):
-    """Get a single connection. Never returns credentials."""
-    _get_project(project_id)
+@sync_to_async
+def _get_connection(connection_id, project_id):
     try:
         conn = CloudConnection.objects.get(id=connection_id, project_id=project_id)
+        return _connection_to_response(conn)
     except CloudConnection.DoesNotExist:
         raise HTTPException(status_code=404, detail="Connection not found")
-    return _connection_to_response(conn)
 
 
-@router.patch("/{connection_id}")
-async def update_connection(
-    connection_id: str,
-    body: UpdateConnectionRequest,
-    project_id: str = Query(..., description="Project ID"),
-):
-    """Update a connection."""
-    _get_project(project_id)
+@sync_to_async
+def _update_connection(connection_id, project_id, body):
     try:
         conn = CloudConnection.objects.get(id=connection_id, project_id=project_id)
     except CloudConnection.DoesNotExist:
@@ -146,13 +125,8 @@ async def update_connection(
     return _connection_to_response(conn)
 
 
-@router.delete("/{connection_id}")
-async def delete_connection(
-    connection_id: str,
-    project_id: str = Query(..., description="Project ID"),
-):
-    """Delete a connection."""
-    _get_project(project_id)
+@sync_to_async
+def _delete_connection(connection_id, project_id):
     try:
         conn = CloudConnection.objects.get(id=connection_id, project_id=project_id)
     except CloudConnection.DoesNotExist:
@@ -161,13 +135,66 @@ async def delete_connection(
     return {"status": "deleted", "id": connection_id}
 
 
+@router.post("", status_code=201)
+async def create_connection(
+    body: CreateConnectionRequest,
+    project_id: str = Query(..., description="Project ID"),
+):
+    """Create a cloud connection. Credentials are encrypted before storage."""
+    if body.provider not in ("azure", "aws", "gcp"):
+        raise HTTPException(status_code=400, detail="provider must be azure, aws, or gcp")
+    project = await _get_project(project_id)
+    encrypted = encrypt_credentials(body.credentials)
+    return await _create_connection(project, body, encrypted)
+
+
+@router.get("")
+async def list_connections(
+    project_id: str = Query(..., description="Project ID"),
+):
+    """List connections for a project. Never returns credentials."""
+    await _get_project(project_id)
+    return await _list_connections(project_id)
+
+
+@router.get("/{connection_id}")
+async def get_connection(
+    connection_id: str,
+    project_id: str = Query(..., description="Project ID"),
+):
+    """Get a single connection. Never returns credentials."""
+    await _get_project(project_id)
+    return await _get_connection(connection_id, project_id)
+
+
+@router.patch("/{connection_id}")
+async def update_connection(
+    connection_id: str,
+    body: UpdateConnectionRequest,
+    project_id: str = Query(..., description="Project ID"),
+):
+    """Update a connection."""
+    await _get_project(project_id)
+    return await _update_connection(connection_id, project_id, body)
+
+
+@router.delete("/{connection_id}")
+async def delete_connection(
+    connection_id: str,
+    project_id: str = Query(..., description="Project ID"),
+):
+    """Delete a connection."""
+    await _get_project(project_id)
+    return await _delete_connection(connection_id, project_id)
+
+
 @router.post("/test")
 async def test_connection(
     body: TestConnectionRequest,
     project_id: str = Query(..., description="Project ID"),
 ):
     """Test connection without saving. Validates credentials against cloud provider."""
-    _get_project(project_id)
+    await _get_project(project_id)
     if body.provider not in PROVIDER_TESTERS:
         raise HTTPException(status_code=400, detail="provider must be azure, aws, or gcp")
     tester = PROVIDER_TESTERS[body.provider]

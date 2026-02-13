@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import Deployment
+from shared.utils.responses import validate_project_id, validate_required_fields
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,9 @@ class CreateDeploymentRequest(BaseModel):
 async def create_deployment(request: Request) -> dict[str, Any]:
     """Record a deployment. project_id and tenant_id from body (injected by gateway/user context)."""
     body = await request.json()
+    validate_required_fields(body, ["project_id", "tenant_id", "service", "version", "commit_sha"])
     project_id = body.get("project_id")
     tenant_id = body.get("tenant_id")
-    if not project_id or not tenant_id:
-        raise HTTPException(status_code=400, detail="project_id and tenant_id are required")
 
     service = body.get("service", "")
     version = body.get("version", "")
@@ -94,8 +94,7 @@ async def list_deployments(
 ) -> list:
     """List deployments with filters."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -125,8 +124,7 @@ async def get_deployment(
 ) -> dict[str, Any]:
     """Get deployment detail."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():

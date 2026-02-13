@@ -14,6 +14,7 @@ from shared.utils.database import setup_django
 
 setup_django()
 
+from shared.utils.responses import install_validation_handler
 from app.api import metrics as metrics_api
 from app.api import traces as traces_api
 from app.api import errors as errors_api
@@ -44,6 +45,9 @@ app.include_router(slos_api.router, prefix="/slos", tags=["SLOs"])
 app.include_router(synth_api.router, prefix="/synthetics", tags=["Synthetics"])
 app.include_router(browser_api.router, prefix="/browser", tags=["Browser"])
 app.include_router(dashboards_api.router, prefix="/dashboards", tags=["Dashboards"])
+
+# Install centralized 422->400 validation error handler
+install_validation_handler(app)
 
 # Prometheus instrumentation for platform health monitoring
 try:

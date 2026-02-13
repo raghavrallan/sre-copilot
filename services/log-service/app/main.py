@@ -12,6 +12,7 @@ setup_django()
 
 from fastapi import FastAPI
 
+from shared.utils.responses import install_validation_handler
 from app.api.logs import router as logs_router
 
 # Configure logging
@@ -30,6 +31,9 @@ app = FastAPI(
 
 # Include routers
 app.include_router(logs_router)
+
+# Install centralized 422->400 validation error handler
+install_validation_handler(app)
 
 # Prometheus instrumentation for platform health monitoring
 try:

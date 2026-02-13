@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import SLO
+from shared.utils.responses import validate_project_id, validate_required_fields
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,9 @@ class UpdateSLORequest(BaseModel):
 async def create_slo(request: Request) -> dict[str, Any]:
     """Create SLO. project_id and tenant_id from body."""
     body = await request.json()
+    validate_required_fields(body, ["project_id", "tenant_id", "name", "service_name", "sli_type"])
     project_id = body.get("project_id")
     tenant_id = body.get("tenant_id")
-    if not project_id or not tenant_id:
-        raise HTTPException(status_code=400, detail="project_id and tenant_id are required")
 
     sli_type = body.get("sli_type", "")
     if sli_type not in ("availability", "latency", "correctness"):
@@ -86,8 +86,7 @@ async def list_slos(
 ) -> list:
     """List all SLOs with current compliance."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -125,8 +124,7 @@ async def get_slo(
 ) -> dict[str, Any]:
     """Get SLO detail with error budget and burn rate."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():
@@ -161,8 +159,7 @@ async def update_slo(
 ) -> dict[str, Any]:
     """Update SLO."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     body = await request.json()
 
@@ -208,8 +205,7 @@ async def delete_slo(
 ) -> dict:
     """Delete SLO."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _delete():

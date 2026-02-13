@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request, HTTPException, Header
 import httpx
 
 from app.core.config import settings
+from shared.utils.responses import validate_project_id, MISSING_REQUIRED_FIELD, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +115,27 @@ def get_internal_headers() -> dict:
 
 # ---- Ingest Endpoints ----
 
+
+def _validate_context(api_context: dict) -> tuple[str, str]:
+    """Validate that API key context has valid project_id and tenant_id."""
+    pid = api_context.get("project_id", "")
+    tid = api_context.get("tenant_id", "")
+    validate_project_id(pid, source="API key")
+    if not tid or not tid.strip():
+        raise error_response("tenant_id missing from API key context", 400, MISSING_REQUIRED_FIELD)
+    return pid, tid
+
+
 @router.post("/metrics")
 async def ingest_metrics(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest metrics from user's Python SDK or custom integration"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
     # Inject project context
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
@@ -139,10 +152,11 @@ async def ingest_metrics(request: Request, x_api_key: Optional[str] = Header(Non
 async def ingest_traces(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest distributed traces from user's instrumented services"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
@@ -159,10 +173,11 @@ async def ingest_traces(request: Request, x_api_key: Optional[str] = Header(None
 async def ingest_errors(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest error events from user's applications"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
@@ -179,10 +194,11 @@ async def ingest_errors(request: Request, x_api_key: Optional[str] = Header(None
 async def ingest_logs(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest log entries from user's applications"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
@@ -199,10 +215,11 @@ async def ingest_logs(request: Request, x_api_key: Optional[str] = Header(None))
 async def ingest_infrastructure(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest host/infrastructure metrics from user's infra agent"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
@@ -219,10 +236,11 @@ async def ingest_infrastructure(request: Request, x_api_key: Optional[str] = Hea
 async def ingest_browser(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest browser/RUM data from user's browser SDK"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(
@@ -239,10 +257,11 @@ async def ingest_browser(request: Request, x_api_key: Optional[str] = Header(Non
 async def ingest_vulnerabilities(request: Request, x_api_key: Optional[str] = Header(None)):
     """Ingest vulnerability scan results from user's security scanning"""
     api_context = await validate_api_key(x_api_key)
+    pid, tid = _validate_context(api_context)
     body = await request.json()
 
-    body["project_id"] = api_context["project_id"]
-    body["tenant_id"] = api_context["tenant_id"]
+    body["project_id"] = pid
+    body["tenant_id"] = tid
 
     async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
         response = await client.post(

@@ -12,6 +12,7 @@ setup_django()
 
 from fastapi import FastAPI
 
+from shared.utils.responses import install_validation_handler
 from app.api import vulnerabilities
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ app = FastAPI(
 )
 
 app.include_router(vulnerabilities.router, prefix="/vulnerabilities")
+
+# Install centralized 422->400 validation error handler
+install_validation_handler(app)
 
 # Prometheus instrumentation for platform health monitoring
 try:

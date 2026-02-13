@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from django.utils import timezone
 
 from shared.models import AlertCondition, AlertPolicy, NotificationChannel, ActiveAlert, MutingRule, Project
+from shared.utils.responses import validate_project_id
 
 
 # Operator mapping: API format -> Django model format
@@ -13,7 +14,8 @@ OPERATOR_REVERSE = {v: k for k, v in OPERATOR_MAP.items()}
 
 
 async def _get_project(project_id: str) -> Project:
-    """Get project by ID, raises if not found."""
+    """Get project by ID, raises 400 if empty/invalid, ValueError if not found."""
+    validate_project_id(project_id, source="query")
     project = await Project.objects.filter(id=project_id).afirst()
     if not project:
         raise ValueError("Project not found")

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import Trace, Span, ServiceRegistration
+from shared.utils.responses import validate_project_id
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +147,7 @@ async def list_traces(
 ) -> list[dict[str, Any]]:
     """List traces with filters."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -200,8 +200,7 @@ async def get_service_dependency_map(
 ) -> dict[str, Any]:
     """Get service dependency map from trace data."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _map():
@@ -247,8 +246,7 @@ async def get_trace(
 ) -> dict[str, Any]:
     """Get all spans for a trace (waterfall data)."""
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _get():

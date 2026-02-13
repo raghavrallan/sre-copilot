@@ -209,20 +209,21 @@ services:
     container_name: sre-copilot-websocket-service
     user: "0"
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=sre_copilot
-      - POSTGRES_USER=sre_user
-      - POSTGRES_PASSWORD=sre_password
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
-    expose:
-      - "8505"
+    ports:
+      - "8505:8505"
     depends_on:
       redis:
         condition: service_healthy
     networks:
+      - frontend-network
       - backend-network
     volumes:
       - ./services/websocket-service:/app
@@ -237,11 +238,11 @@ services:
     container_name: sre-copilot-metrics-collector
     user: "0"
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=sre_copilot
-      - POSTGRES_USER=sre_user
-      - POSTGRES_PASSWORD=sre_password
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -264,11 +265,11 @@ services:
     container_name: sre-copilot-log-service
     user: "0"
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=sre_copilot
-      - POSTGRES_USER=sre_user
-      - POSTGRES_PASSWORD=sre_password
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
       - REDIS_URL=${REDIS_URL}
       - ENVIRONMENT=development
     expose:
@@ -445,6 +446,7 @@ services:
       - backend-network
     volumes:
       - ./services/audit-service:/app
+      - ./shared:/app/shared
     command: uvicorn app.main:app --host 0.0.0.0 --port 8508 --reload
 
   # Frontend

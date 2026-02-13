@@ -8,8 +8,8 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 httpx==0.26.0
 redis==5.0.1
-psycopg2-binary>=2.9
-Django>=4.2
+psycopg2-binary==2.9.9
+Django==5.0.1
 asgiref>=3.7.0
 python-dotenv==1.0.0
 prometheus-fastapi-instrumentator>=6.0.0

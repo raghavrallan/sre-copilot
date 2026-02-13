@@ -50,7 +50,7 @@ class UpdatePolicyRequest(BaseModel):
 async def create_policy_endpoint(request: CreatePolicyRequest) -> Dict[str, Any]:
     """Create a new alert policy."""
     try:
-        project = _get_project(request.project_id)
+        project = await _get_project(request.project_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

@@ -80,7 +80,7 @@ class Migration(migrations.Migration):
                 ('timestamp', models.DateTimeField(db_index=True)),
                 ('project', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='spans', to='shared.project')),
                 ('tenant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='shared.tenant')),
-                ('trace', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='spans', to='shared.trace')),
+                ('trace', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='spans', to='shared.trace', db_column='trace_fk_id')),
             ],
             options={'db_table': 'obs_spans', 'ordering': ['-timestamp']},
         ),

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 from shared.models.observability import BrowserEvent
+from shared.utils.responses import validate_project_id
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +107,8 @@ async def get_browser_overview(
     project_id: Optional[str] = Query(None),
 ) -> dict[str, Any]:
     """Get browser monitoring overview with Web Vitals averages."""
-    from fastapi import HTTPException
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _overview():
@@ -154,10 +153,8 @@ async def get_page_loads(
     project_id: Optional[str] = Query(None),
 ) -> list[dict[str, Any]]:
     """Get page load timing data."""
-    from fastapi import HTTPException
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -188,10 +185,8 @@ async def get_browser_errors(
     project_id: Optional[str] = Query(None),
 ) -> list[dict[str, Any]]:
     """Get JS errors from browser."""
-    from fastapi import HTTPException
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
@@ -222,10 +217,8 @@ async def get_ajax_calls(
     project_id: Optional[str] = Query(None),
 ) -> list[dict[str, Any]]:
     """Get AJAX/fetch timing data."""
-    from fastapi import HTTPException
     pid = project_id or request.headers.get("X-Project-ID")
-    if not pid:
-        raise HTTPException(status_code=400, detail="project_id query param or X-Project-ID header required")
+    validate_project_id(pid, source="query")
 
     @sync_to_async
     def _list():
