@@ -11,11 +11,16 @@
 - **Containerization**: Docker Compose
 
 ### Key Files to Reference
-- `docker-compose.yml` - Service definitions
-- `.env` - Environment configuration
-- `services/api-gateway/app/api/proxy.py` - API routing
-- `shared/models/` - Database models
+- `docker-compose.yml` - Service definitions (14 backend services + frontend + Redis)
+- `.env` - Environment configuration (DB, Redis, Azure OpenAI, JWT)
+- `services/api-gateway/app/api/proxy.py` - Auth, incident, AI proxy routes
+- `services/api-gateway/app/api/observability_proxy.py` - Metrics, logs, alerts, synthetic, security, CI/CD, cloud routes
+- `services/api-gateway/app/api/ingest_proxy.py` - Public ingest API (API-key auth)
+- `services/api-gateway/app/core/config.py` - All service URLs (ports 8501-8515)
+- `shared/models/` - Django ORM models (tenant, incident, observability, cloud, cicd)
+- `shared/utils/responses.py` - Centralized validation and response helpers
 - `frontend/src/services/api.ts` - API client configuration
+- `frontend/src/contexts/WebSocketContext.tsx` - Real-time WebSocket connection
 
 ## Before Making Changes
 
@@ -88,6 +93,22 @@
 - **Symptom**: Table doesn't exist error
 - **Fix**: Create table via psql or Django migration
 
+### 6. SynchronousOnlyOperation in Async Endpoints
+- **Symptom**: `django.core.exceptions.SynchronousOnlyOperation`
+- **Fix**: Wrap Django ORM calls with `@sync_to_async` and `await` them in async endpoints
+
+### 7. Django Version vs PostgreSQL Incompatibility
+- **Symptom**: `django.db.utils.NotSupportedError: PostgreSQL 14 or later is required`
+- **Fix**: Pin Django to 5.0.x in requirements.txt (our DB is PostgreSQL 13)
+
+### 8. Missing Service URL in API Gateway Config
+- **Symptom**: `AttributeError: 'Settings' object has no attribute 'X_SERVICE_URL'`
+- **Fix**: Add the service URL to `services/api-gateway/app/core/config.py`
+
+### 9. WebSocket Connection Failures
+- **Symptom**: Frontend shows "Offline" or "Failed to connect to real-time updates"
+- **Fix**: Check that websocket-service port 8505 is mapped in docker-compose.yml, CORS is configured, and frontend has correct `VITE_WEBSOCKET_URL`
+
 ## File Modification Rules
 
 ### When Modifying Frontend
@@ -114,13 +135,13 @@
 ### Quick Verification
 ```bash
 # Check container status
-docker ps
+docker compose ps
 
 # Check logs
-docker logs sre-copilot-<service> --tail 50
+docker compose logs --tail 50 <service-name>
 
-# Test API endpoint
-curl -s http://localhost:8080/api/v1/endpoint
+# Test API endpoint (API Gateway external port is 8580)
+curl -s http://localhost:8580/api/v1/endpoint
 ```
 
 ### After Frontend Changes
@@ -129,9 +150,9 @@ curl -s http://localhost:8080/api/v1/endpoint
 3. Test user flows end-to-end
 
 ### After Backend Changes
-1. Rebuild affected containers: `docker-compose up -d --build <service>`
+1. Rebuild affected containers: `docker compose up -d --build <service>`
 2. Check service logs for startup errors
-3. Test API with curl
+3. Test API with curl (gateway port 8580)
 
 ## Commit Guidelines
 

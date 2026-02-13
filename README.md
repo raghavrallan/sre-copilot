@@ -1,61 +1,29 @@
 # SRE Copilot
 
-**AI-Powered Operational Intelligence for Site Reliability Engineering**
+**Multi-Tenant SaaS Observability & Incident Intelligence Platform**
 
 ---
 
 ## Overview
 
-SRE Copilot is an AI-powered platform that understands, predicts, and acts on production systems with graduated autonomy. It bridges observability tools and incident management with intelligent automation, helping SRE teams reduce MTTR, alert fatigue, and operational toil.
-
-**Not competing with:** Datadog, New Relic, PagerDuty
-**Competing with:** Manual runbooks, tribal knowledge, alert fatigue, toil
+SRE Copilot is a full-stack SaaS observability platform that collects metrics, logs, traces, errors, and infrastructure data from your systems via lightweight agents. It provides AI-powered incident management, hypothesis generation, alerting, synthetic monitoring, security vulnerability tracking, and CI/CD pipeline visibility -- all in a single, multi-tenant platform.
 
 ---
 
-## Vision
+## Key Features
 
-Build a comprehensive SRE AI platform in three phases:
-
-### Phase 1: Intelligence Layer (Months 1-4) ⬅️ **WE ARE HERE**
-**Goal:** Earn trust through incident sensemaking
-
-**Core Capabilities:**
-- Incident context assistant (Slack/Teams bot)
-- AI-powered hypothesis generation
-- Runbook recommendation engine
-- Root cause analysis assistant
-- Automated post-mortem generation
-
-**Success Metric:** 60% of incidents start with "asking the AI"
-
----
-
-### Phase 2: Predictive Layer (Months 5-9)
-**Goal:** Shift from reactive to proactive
-
-**Core Capabilities:**
-- Anomaly detection with explainability
-- Predictive alerting (3-12 hour forecast)
-- Smart alert correlation/suppression
-- Capacity forecasting
-- Weekly insight reports
-
-**Success Metric:** 40% reduction in surprise incidents, 70% alert noise reduction
-
----
-
-### Phase 3: Autonomous Layer (Months 10-15)
-**Goal:** Delegate safe toil to AI
-
-**Core Capabilities:**
-- Graduated autonomous remediation
-- Cost optimization automation
-- Infrastructure drift correction
-- Compliance monitoring
-- Self-healing workflows
-
-**Success Metric:** 15 hours/week toil reduction per engineer, 25% infrastructure cost savings
+- **Metrics Collection** -- Ingest and query application and infrastructure metrics
+- **Log Aggregation** -- Centralized log search, filtering, and analysis
+- **Distributed Tracing** -- End-to-end request tracing across services
+- **Error Tracking** -- Capture, group, and alert on application errors
+- **AI-Powered Incidents** -- Automatic hypothesis generation and root cause analysis (Azure OpenAI GPT-4o-mini)
+- **Alerting & SLOs** -- Configurable alert policies with SLO/SLI tracking
+- **Synthetic Monitoring** -- HTTP endpoint health checks on a schedule
+- **Security Scanning** -- Vulnerability ingestion and tracking
+- **CI/CD Integration** -- GitHub Actions and Azure DevOps pipeline visibility
+- **Cloud Connectors** -- AWS, Azure, and GCP infrastructure monitoring
+- **Real-Time Updates** -- WebSocket-powered live dashboards
+- **Multi-Tenancy** -- Full tenant and project isolation with RBAC (Owner, Admin, Engineer, Viewer)
 
 ---
 
@@ -63,32 +31,47 @@ Build a comprehensive SRE AI platform in three phases:
 
 ### Backend
 - **API Framework:** FastAPI (Python 3.11+)
-- **ORM:** Django ORM (standalone)
-- **Database:** PostgreSQL 15+ with TimescaleDB
-- **Cache/Queue:** Redis 7+
-- **AI:** Claude Sonnet 4.5 (Anthropic) with prompt caching
-- **Vector DB:** Pinecone
-- **ML:** Prophet (forecasting), Isolation Forest (anomaly detection)
+- **ORM:** Django ORM 5.0 (standalone, async via `sync_to_async`)
+- **Database:** PostgreSQL 13+ (external)
+- **Cache / Pub-Sub:** Redis 7+
+- **AI:** Azure OpenAI GPT-4o-mini
+- **Validation:** Centralized response helpers (`shared/utils/responses.py`)
 
 ### Frontend
 - **Framework:** React 18 + TypeScript
 - **Build Tool:** Vite
 - **UI Library:** shadcn/ui + Tailwind CSS
 - **State Management:** Zustand
-- **Charts:** Recharts + D3.js
+- **Charts:** Recharts
+- **Real-Time:** WebSocket context with auto-reconnect
 
 ### Infrastructure
-- **Cloud:** Microsoft Azure
-- **Orchestration:** Kubernetes (AKS)
-- **IaC:** Terraform
+- **Containerization:** Docker + Docker Compose
+- **Networking:** Segmented frontend / backend Docker networks
 - **CI/CD:** GitHub Actions
-- **Monitoring:** Prometheus + Grafana
+- **Monitoring:** Prometheus metrics on every service (`/metrics`)
 
-### Integrations
-- **Phase 1:** Prometheus, PagerDuty, Slack
-- **Phase 2+:** Datadog, Grafana, Jira, GitHub, etc.
+---
 
-See [Technology Choices](docs/tech-stack/technology-choices.md) for detailed rationale.
+## Microservices
+
+| Service | Internal Port | External Port | Description |
+|---------|--------------|---------------|-------------|
+| **api-gateway** | 8500 | 8580 | Central entry point, auth verification, request routing |
+| **auth-service** | 8501 | -- | JWT authentication, RBAC, tenant/project management |
+| **incident-service** | 8502 | -- | Incident lifecycle, state machine, hypothesis coordination |
+| **ai-service** | 8503 | -- | AI hypothesis generation, cost analytics (Azure OpenAI) |
+| **integration-service** | 8504 | -- | Prometheus/AlertManager webhook receivers |
+| **websocket-service** | 8505 | 8505 | Real-time bidirectional updates (WebSocket + Redis Pub/Sub) |
+| **audit-service** | 8508 | -- | API audit logging, compliance |
+| **metrics-collector-service** | 8509 | -- | Metrics, traces, errors, infrastructure, dashboards, SLOs, deployments |
+| **log-service** | 8510 | -- | Log ingestion, search, statistics |
+| **alerting-service** | 8511 | -- | Alert policies, evaluation, notification channels |
+| **synthetic-service** | 8512 | -- | Synthetic HTTP monitors, uptime checks |
+| **security-service** | 8513 | -- | Vulnerability ingestion and tracking |
+| **cloud-connector-service** | 8514 | -- | AWS / Azure / GCP infrastructure sync |
+| **cicd-connector-service** | 8515 | -- | GitHub Actions / Azure DevOps pipeline integration |
+| **frontend** | 3000 | 3000 | React SPA |
 
 ---
 
@@ -96,61 +79,62 @@ See [Technology Choices](docs/tech-stack/technology-choices.md) for detailed rat
 
 ```
 sre-copilot/
-├── README.md                          # This file
-├── FOLDER_STRUCTURE.md                # Detailed folder structure
-├── docs/                              # All documentation
-│   ├── architecture/                  # System architecture
-│   │   ├── system-architecture.md     # Full system architecture
-│   │   └── data-flow.md               # Data flow diagrams
-│   ├── api-specs/                     # API specifications
-│   │   ├── README.md                  # Complete API reference
-│   │   └── webhooks.md                # Webhook specifications
-│   ├── guides/                        # Developer guides
-│   │   ├── getting-started.md         # Quick start guide
-│   │   ├── testing.md                 # Testing guide
-│   │   └── security.md                # Security guide
-│   ├── features/
-│   │   └── phase-1-v1-features.md     # Phase 1 feature specifications
-│   ├── data-models/
-│   │   └── core-models.md             # Database schema
-│   └── tech-stack/
-│       └── technology-choices.md      # Tech stack decisions
+├── README.md
+├── docker-compose.yml
+├── .env                            # Environment configuration
 │
-├── services/                          # Microservices
-│   ├── api-gateway/                   # API Gateway (Port 8500)
-│   ├── auth-service/                  # Authentication (Port 8501)
-│   ├── incident-service/              # Incidents (Port 8502)
-│   ├── ai-service/                    # AI/ML (Port 8503)
-│   ├── integration-service/           # Webhooks (Port 8504)
-│   ├── websocket-service/             # Real-time (Port 8505)
-│   └── audit-service/                 # Audit logs (Port 8508)
+├── docs/                           # Documentation
+│   ├── architecture/               # System architecture, data flow
+│   ├── api-specs/                  # API reference, webhooks
+│   ├── guides/                     # Getting started, testing, security
+│   ├── features/                   # Feature specifications
+│   ├── data-models/                # Database schema
+│   ├── tech-stack/                 # Technology choices
+│   ├── security.md                 # Security policy
+│   └── folder-structure.md         # Detailed folder structure
 │
-├── frontend/                          # React + TypeScript (Port 5173)
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── hooks/
-│   │   ├── lib/
-│   │   └── services/
-│   └── public/
+├── .rules/                         # Project rules for AI assistants
+│   ├── PROJECT_RULES.md
+│   ├── CODING_STANDARDS.md
+│   └── AI_ASSISTANT_RULES.md
 │
-├── shared/                            # Shared code
-│   ├── models/                        # Django ORM models
-│   ├── migrations/                    # Database migrations
-│   └── config/                        # Shared configuration
+├── services/                       # Backend microservices
+│   ├── api-gateway/                # Port 8500 (ext 8580)
+│   ├── auth-service/               # Port 8501
+│   ├── incident-service/           # Port 8502
+│   ├── ai-service/                 # Port 8503
+│   ├── integration-service/        # Port 8504
+│   ├── websocket-service/          # Port 8505
+│   ├── audit-service/              # Port 8508
+│   ├── metrics-collector-service/  # Port 8509
+│   ├── log-service/                # Port 8510
+│   ├── alerting-service/           # Port 8511
+│   ├── synthetic-service/          # Port 8512
+│   ├── security-service/           # Port 8513
+│   ├── cloud-connector-service/    # Port 8514
+│   └── cicd-connector-service/     # Port 8515
 │
-├── infra/                             # Infrastructure
-│   ├── terraform/                     # IaC
-│   └── kubernetes/                    # K8s manifests
+├── frontend/                       # React + TypeScript (Port 3000)
+│   └── src/
+│       ├── components/
+│       ├── pages/
+│       ├── contexts/               # WebSocket, theme contexts
+│       ├── hooks/
+│       ├── lib/stores/             # Zustand stores
+│       └── services/               # API client
 │
-├── tests/                             # Test suites
-│   ├── unit/                          # Unit tests
-│   └── integration/                   # Integration tests
+├── shared/                         # Shared code across services
+│   ├── models/                     # Django ORM models
+│   ├── migrations/                 # Database migrations
+│   ├── config/                     # Django settings
+│   └── utils/                      # Centralized validation, responses
 │
-├── diagrams/                          # Architecture diagrams
-│   └── complete-architecture.md
-│
-└── docker-compose.yml                 # Local development setup
+├── agent/infra-agent/              # Lightweight data collection agent
+├── sdk/python/                     # Python SDK for data ingestion
+├── monitoring/                     # Prometheus / Grafana configs
+├── sprints/                        # Sprint planning documents
+├── diagrams/                       # Architecture diagrams
+└── infra/                          # Terraform / Kubernetes manifests
 ```
 
 ---
@@ -159,84 +143,110 @@ sre-copilot/
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- Docker & Docker Compose
-- PostgreSQL 15+
-- Azure subscription (for deployment)
+- **Docker Desktop** (or Docker Engine 20.10+ with Compose v2)
+- **Git**
+- **PostgreSQL 13+** (external -- not included in Docker Compose)
+- **8 GB RAM** minimum
 
-### Local Development Setup
+### 1. Clone and Configure
 
 ```bash
-# Clone repository
-git clone https://github.com/your-org/sre-copilot.git
+git clone https://github.com/raghavrallan/sre-copilot.git
 cd sre-copilot
-
-# Backend setup
-cd backend
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-pip install -r requirements.txt
-
-# Django migrations
-python manage.py migrate
-
-# Start backend
-uvicorn app.main:app --reload
-
-# Frontend setup (in new terminal)
-cd frontend
-npm install
-npm run dev
+cp .env.example .env
+# Edit .env with your PostgreSQL host, credentials, and Azure OpenAI keys
 ```
 
-### Using Docker Compose (Recommended)
+### 2. Start All Services
 
 ```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+docker compose up -d
 ```
 
-**Services:**
-- API: http://localhost:8580
-- Frontend: http://localhost:5173
-- API Docs: http://localhost:8580/docs
-- PostgreSQL: localhost:5432
-- Redis: localhost:6379
+### 3. Access the Application
+
+| URL | Description |
+|-----|-------------|
+| http://localhost:3000 | Frontend UI |
+| http://localhost:8580 | API Gateway |
+| http://localhost:8580/docs | Swagger API Docs |
+| ws://localhost:8505/ws | WebSocket (real-time updates) |
+
+### 4. Register and Explore
+
+1. Open http://localhost:3000/register
+2. Create an account (organization, name, email, password)
+3. You will be redirected to the dashboard
+
+---
+
+## Environment Variables
+
+Key variables in `.env`:
+
+```bash
+# Database (external PostgreSQL)
+POSTGRES_HOST=your-postgres-host
+POSTGRES_PORT=5432
+POSTGRES_DB=srecopilot
+POSTGRES_USER=srecopilot
+POSTGRES_PASSWORD=your-password
+
+# Redis
+REDIS_URL=redis://redis:6379/0
+
+# JWT
+JWT_SECRET_KEY=your-secret-key
+JWT_ALGORITHM=HS256
+
+# Azure OpenAI (for AI hypothesis generation)
+AZURE_OPENAI_ENDPOINT=https://your-endpoint.cognitiveservices.azure.com/
+AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+
+# Frontend
+VITE_API_GATEWAY_URL=http://localhost:8580
+VITE_WEBSOCKET_URL=ws://localhost:8505
+```
+
+---
+
+## Data Ingestion
+
+External systems send observability data to the platform via the **Ingest API**, authenticated with API keys:
+
+```bash
+# Ingest metrics
+curl -X POST http://localhost:8580/api/v1/ingest/metrics \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"metrics": [{"name": "cpu_usage", "value": 72.5, "tags": {"host": "web-01"}}]}'
+
+# Ingest logs
+curl -X POST http://localhost:8580/api/v1/ingest/logs \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"logs": [{"message": "Request processed", "level": "info", "service": "api"}]}'
+```
+
+Supported ingest endpoints: `/metrics`, `/traces`, `/errors`, `/logs`, `/infrastructure`, `/browser`, `/vulnerabilities`
 
 ---
 
 ## Documentation
 
-### Getting Started
-- **[Getting Started Guide](docs/guides/getting-started.md)** - Quick start with Docker Compose
-- [Technology Choices](docs/tech-stack/technology-choices.md) - Tech stack rationale
-
-### Architecture
-- [System Architecture](docs/architecture/system-architecture.md) - Complete system architecture
-- [Data Flow](docs/architecture/data-flow.md) - Data flow diagrams
-- [Architecture Diagrams](diagrams/complete-architecture.md) - ASCII diagrams
-
-### API Reference
-- [API Specifications](docs/api-specs/README.md) - Complete REST API reference
-- [Webhook API](docs/api-specs/webhooks.md) - AlertManager/Prometheus webhooks
-
-### Features & Data
-- [Phase 1 Features](docs/features/phase-1-v1-features.md) - Feature specifications
-- [Data Models](docs/data-models/core-models.md) - Django ORM models and schema
-
-### Guides
-- [Testing Guide](docs/guides/testing.md) - Testing strategy and commands
-- [Security Guide](docs/guides/security.md) - Security features and best practices
+- **[Getting Started Guide](docs/guides/getting-started.md)** -- Docker Compose setup
+- **[System Architecture](docs/architecture/system-architecture.md)** -- Full architecture overview
+- **[Data Flow](docs/architecture/data-flow.md)** -- How data moves through the system
+- **[API Reference](docs/api-specs/README.md)** -- REST API specifications
+- **[Webhook API](docs/api-specs/webhooks.md)** -- AlertManager / Prometheus webhooks
+- **[Data Models](docs/data-models/core-models.md)** -- Database schema
+- **[Testing Guide](docs/guides/testing.md)** -- Testing strategy
+- **[Security Policy](docs/security.md)** -- Security measures and reporting
+- **[Folder Structure](docs/folder-structure.md)** -- Detailed project layout
+- **[Technology Choices](docs/tech-stack/technology-choices.md)** -- Tech stack rationale
 
 ---
-
 
 ## Contributing
 
@@ -251,128 +261,17 @@ We use **GitHub Flow**:
 ### Commit Conventions
 
 ```
-feat: Add hypothesis confidence scoring
-fix: Fix PagerDuty webhook parsing
+feat: Add SLO burn-rate alerting
+fix: Resolve 500 on empty project_id
 docs: Update architecture diagram
-test: Add unit tests for evidence aggregator
-chore: Update dependencies
+test: Add integration tests for log-service
+chore: Pin Django to 5.0.1 across services
 ```
-
-### Code Quality
-
-**Backend:**
-- Linting: `ruff check .`
-- Formatting: `black .`
-- Type checking: `mypy app/`
-- Tests: `pytest`
-
-**Frontend:**
-- Linting: `npm run lint`
-- Formatting: `npm run format`
-- Tests: `npm run test`
-
-All checks run automatically on PRs via GitHub Actions.
-
----
-
-## Metrics & KPIs
-
-### Technical Metrics (Phase 1)
-- API response time (p95) < 500ms
-- Slack notification time (p95) < 60s
-- Hypothesis generation < 30s
-- System uptime > 99%
-- Test coverage > 70%
-
-### Business Metrics (Phase 1)
-- Adoption: 60%+ engineers use weekly
-- Trust: 70%+ hypotheses marked accurate
-- MTTR reduction: 30%
-- User satisfaction: NPS > 40
-
----
-
-## Deployment
-
-### Staging
-
-```bash
-# Deploy to staging (via GitHub Actions)
-git push origin main
-
-# Or manually
-terraform apply -var-file=staging.tfvars
-kubectl apply -f k8s/staging/
-```
-
-### Production
-
-```bash
-# Create release tag
-git tag -a v1.0.0 -m "Release v1.0.0"
-git push origin v1.0.0
-
-# GitHub Actions automatically deploys to production
-```
-
-See [Deployment Guide](docs/deployment/production-deploy.md) (TBD)
-
----
-
-## Cost Structure
-
-### Development Phase (Months 1-6)
-- Claude API: $300-800/month
-- Pinecone: $70/month
-- Azure Infrastructure: $500-1,000/month
-- **Total:** ~$1,500-2,500/month
-
-### Production (Per Customer)
-- Infrastructure: $200-500/month
-- Claude API: $100-500/month
-- Data Storage: $50-200/month
-- **COGS:** $350-1,200/month per customer
-
-### SaaS Pricing
-- **Starter:** $499/month (Phase 1, 5 services)
-- **Professional:** $1,499/month (Phase 1+2, 20 services)
-- **Enterprise:** $4,999/month (All phases, unlimited)
-
-**Margin:** 60-85% at scale
-
----
-
-## Support & Contact
-
-- **Documentation:** [docs/](docs/)
-- **Issues:** [GitHub Issues](https://github.com/your-org/sre-copilot/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/your-org/sre-copilot/discussions)
-- **Email:** support@srecopilot.io (TBD)
 
 ---
 
 ## License
 
-**Proprietary** - All rights reserved
+**Proprietary** -- All rights reserved.
 
-This is commercial software. Unauthorized copying, modification, distribution, or use is strictly prohibited.
-
-Copyright © 2026 SRE Copilot Inc.
-
----
-
-## Acknowledgments
-
-Built with:
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [React](https://react.dev/)
-- [Django ORM](https://www.djangoproject.com/)
-- [Claude API](https://www.anthropic.com/claude)
-- [Pinecone](https://www.pinecone.io/)
-- [shadcn/ui](https://ui.shadcn.com/)
-
-Inspired by the SRE community's best practices and the vision of AI-augmented operations.
-
----
-
-**Built with ❤️ for SRE teams worldwide**
+Copyright 2026 SRE Copilot.

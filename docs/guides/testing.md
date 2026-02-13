@@ -364,18 +364,19 @@ export PYTHONPATH="${PYTHONPATH}:services/websocket-service:services/audit-servi
 
 ```bash
 # Check if services are up
-docker-compose ps
+docker compose ps
 
 # Start services
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Database Connection Issues
 
+PostgreSQL is external (not in Docker Compose). Verify your `.env` has the correct `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, and `POSTGRES_PASSWORD`.
+
 ```bash
-# Reset database
-docker-compose down -v
-docker-compose up -d postgres redis
+# Restart Redis
+docker compose restart redis
 ```
 
 ### Async Test Issues

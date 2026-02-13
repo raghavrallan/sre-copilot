@@ -20,15 +20,26 @@ sre-copilot/
 │   │   ├── hooks/           # Custom React hooks
 │   │   ├── contexts/        # React contexts
 │   │   └── types/           # TypeScript interfaces
-├── services/                 # Backend microservices
-│   ├── api-gateway/         # API gateway (FastAPI)
-│   ├── auth-service/        # Authentication (FastAPI + Django ORM)
-│   ├── incident-service/    # Incident management
-│   ├── integration-service/ # External integrations
-│   ├── ai-service/          # AI/LLM operations
-│   └── websocket-service/   # Real-time WebSocket
-├── shared/                   # Shared Django models
-└── monitoring/              # Prometheus, Grafana, AlertManager
+├── services/                 # Backend microservices (14 services)
+│   ├── api-gateway/         # Port 8500 (ext 8580) - Request routing, auth
+│   ├── auth-service/        # Port 8501 - Authentication, RBAC
+│   ├── incident-service/    # Port 8502 - Incident management
+│   ├── ai-service/          # Port 8503 - AI hypothesis (Azure OpenAI)
+│   ├── integration-service/ # Port 8504 - Prometheus webhooks
+│   ├── websocket-service/   # Port 8505 - Real-time WebSocket
+│   ├── audit-service/       # Port 8508 - Audit logging
+│   ├── metrics-collector-service/ # Port 8509 - Metrics, traces, errors, SLOs
+│   ├── log-service/         # Port 8510 - Log ingestion & search
+│   ├── alerting-service/    # Port 8511 - Alert policies
+│   ├── synthetic-service/   # Port 8512 - HTTP monitors
+│   ├── security-service/    # Port 8513 - Vulnerability tracking
+│   ├── cloud-connector-service/ # Port 8514 - AWS/Azure/GCP sync
+│   └── cicd-connector-service/  # Port 8515 - CI/CD integration
+├── shared/                   # Shared Django models & utils
+│   ├── models/              # Django ORM models
+│   ├── config/              # Django settings
+│   └── utils/               # responses.py (validation), internal_auth.py
+└── monitoring/              # Prometheus, Grafana configs
 ```
 
 ## Frontend Standards (React + TypeScript)
@@ -107,26 +118,50 @@ const handleSubmit = async () => {
 
 ### API Endpoint Structure
 ```python
+from shared.utils.responses import validate_project_id, success_response, error_response
+
 @router.post("/resource")
 async def create_resource(
     request: CreateResourceRequest,
     project_id: str = Query(...),
-    user=Depends(get_current_user)
 ):
     """Create a new resource"""
-    # 1. Validate user access
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # 1. Validate project_id (returns 400 if invalid)
+    validate_project_id(project_id)
 
-    # 2. Business logic
+    # 2. Business logic (use sync_to_async for ORM calls)
     try:
-        resource = await Resource.objects.acreate(...)
+        resource = await _create_resource(project_id, request)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return error_response(500, str(e))
 
-    # 3. Return response
-    return ResourceResponse(...)
+    # 3. Return consistent response
+    return success_response({"resource": resource_to_dict(resource)})
 ```
+
+### Django ORM in Async Endpoints (sync_to_async)
+
+Django ORM operations are synchronous. In async FastAPI endpoints, wrap them with `sync_to_async`:
+
+```python
+from asgiref.sync import sync_to_async
+
+@sync_to_async
+def _get_resources(project_id):
+    return list(Resource.objects.filter(project_id=project_id))
+
+@sync_to_async
+def _create_resource(project_id, data):
+    return Resource.objects.create(project_id=project_id, **data)
+
+@router.get("/resources")
+async def list_resources(project_id: str = Query(...)):
+    validate_project_id(project_id)
+    resources = await _get_resources(project_id)
+    return success_response({"resources": resources})
+```
+
+**Important:** Do NOT call Django ORM methods directly in async functions -- this raises `SynchronousOnlyOperation`.
 
 ### Django Models
 - Always use UUIDs for primary keys

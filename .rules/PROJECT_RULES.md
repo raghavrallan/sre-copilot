@@ -36,7 +36,7 @@ def get_token_from_request(request, authorization=None):
 ```
 
 ### 3. API Gateway Pattern
-- All frontend requests MUST go through API gateway (port 8080)
+- All frontend requests MUST go through API gateway (port 8580 external, 8500 internal)
 - API gateway handles auth and forwards to microservices
 - Never expose microservices directly to frontend
 - Always include `project_id` when forwarding requests
@@ -183,9 +183,11 @@ useWebSocketEvent<Incident>('incident.updated', (data) => {
 - API gateway is the only public entry point
 
 ### Database Operations
-- Use Django ORM async methods (`acreate`, `aget`, `asave`)
+- Use Django ORM with `sync_to_async` wrapper for async FastAPI endpoints
+- Native async Django methods (`acreate`, `aget`, `asave`) are available in Django 5.0+, but `sync_to_async` wrappers are the established pattern in this codebase
 - Always use transactions for multi-step operations
 - Add proper indexes for query performance
+- Pin Django to 5.0.x (PostgreSQL 13 is not supported by Django 5.1+)
 
 ### Logging
 ```python
@@ -207,7 +209,7 @@ print(f"❌ Failed to process webhook: {error}")
 
 ### Environment Variables
 ```
-# Database
+# Database (external PostgreSQL)
 POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
 
 # Redis
@@ -216,10 +218,32 @@ REDIS_URL=redis://redis:6379/0
 # JWT
 JWT_SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
-# Service URLs (internal)
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT
+
+# Service URLs (internal, configured in api-gateway config.py)
 AUTH_SERVICE_URL=http://auth-service:8501
 INCIDENT_SERVICE_URL=http://incident-service:8502
+AI_SERVICE_URL=http://ai-service:8503
+INTEGRATION_SERVICE_URL=http://integration-service:8504
+WEBSOCKET_SERVICE_URL=http://websocket-service:8505
+AUDIT_SERVICE_URL=http://audit-service:8508
+METRICS_COLLECTOR_URL=http://metrics-collector-service:8509
+LOG_SERVICE_URL=http://log-service:8510
+ALERTING_SERVICE_URL=http://alerting-service:8511
+SYNTHETIC_SERVICE_URL=http://synthetic-service:8512
+SECURITY_SERVICE_URL=http://security-service:8513
+CLOUD_CONNECTOR_URL=http://cloud-connector-service:8514
+CICD_CONNECTOR_URL=http://cicd-connector-service:8515
 ```
+
+### Centralized Validation
+- Use `shared/utils/responses.py` for all validation and response formatting
+- `validate_project_id(project_id)` -- validates and returns UUID or raises 400
+- `validate_required_fields(data, fields)` -- checks for missing required fields
+- `success_response(data, message)` -- consistent success response format
+- `error_response(status_code, message)` -- consistent error response format
+- Global `RequestValidationError` handler converts FastAPI 422 errors to 400
 
 ## Git Conventions
 

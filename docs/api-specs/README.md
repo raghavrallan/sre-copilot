@@ -555,4 +555,4 @@ Each microservice also has its own documentation:
 
 - [System Architecture](../architecture/system-architecture.md)
 - [Data Models](../data-models/core-models.md)
-- [Security](./security.md)
+- [Security Guide](../guides/security.md)
