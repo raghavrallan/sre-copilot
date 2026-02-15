@@ -1,3 +1,7 @@
+/**
+ * @deprecated Replaced by WorkflowPipeline at components/incident/WorkflowPipeline.tsx
+ * This file is kept for reference only and is no longer imported.
+ */
 import { useEffect, useState } from 'react'
 import api from '../../services/api'
 
