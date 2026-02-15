@@ -1,0 +1,28 @@
+# Multi-stage build for React frontend (K8s version with reverse proxy)
+
+# Build stage
+FROM node:20-alpine AS build
+WORKDIR /app
+
+ARG VITE_API_GATEWAY_URL=http://localhost:30000
+ARG VITE_WEBSOCKET_URL=ws://localhost:30000/ws
+
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npx vite build
+
+# Production stage with nginx reverse proxy
+FROM nginx:alpine AS production
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# nginx config will be mounted via ConfigMap
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chown -R nginx:nginx /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid
+USER nginx
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alerting-service
+  namespace: sre-copilot
+  labels:
+    app: alerting-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alerting-service
+  template:
+    metadata:
+      labels:
+        app: alerting-service
+    spec:
+      containers:
+        - name: alerting-service
+          image: sre-copilot/alerting-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8511
+          envFrom:
+            - configMapRef:
+                name: db-config
+            - configMapRef:
+                name: services-config
+            - secretRef:
+                name: common-secrets
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8511
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8511
+            initialDelaySeconds: 20
+            periodSeconds: 30

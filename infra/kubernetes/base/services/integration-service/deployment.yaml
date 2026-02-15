@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: integration-service
+  namespace: sre-copilot
+  labels:
+    app: integration-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-service
+  template:
+    metadata:
+      labels:
+        app: integration-service
+    spec:
+      containers:
+        - name: integration-service
+          image: sre-copilot/integration-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8504
+          envFrom:
+            - configMapRef:
+                name: db-config
+            - configMapRef:
+                name: services-config
+            - secretRef:
+                name: common-secrets
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8504
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8504
+            initialDelaySeconds: 20
+            periodSeconds: 30

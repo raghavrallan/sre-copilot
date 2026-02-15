@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: synthetic-service
+  namespace: sre-copilot
+  labels:
+    app: synthetic-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8512
+      targetPort: 8512
+  selector:
+    app: synthetic-service

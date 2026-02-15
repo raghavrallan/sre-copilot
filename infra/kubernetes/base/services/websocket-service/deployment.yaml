@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-service
+  namespace: sre-copilot
+  labels:
+    app: websocket-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: websocket-service
+  template:
+    metadata:
+      labels:
+        app: websocket-service
+    spec:
+      containers:
+        - name: websocket-service
+          image: sre-copilot/websocket-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8505
+          envFrom:
+            - configMapRef:
+                name: db-config
+            - configMapRef:
+                name: services-config
+            - secretRef:
+                name: common-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8505
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8505
+            initialDelaySeconds: 20
+            periodSeconds: 30

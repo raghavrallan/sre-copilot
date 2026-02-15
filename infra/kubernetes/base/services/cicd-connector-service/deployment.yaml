@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cicd-connector-service
+  namespace: sre-copilot
+  labels:
+    app: cicd-connector-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cicd-connector-service
+  template:
+    metadata:
+      labels:
+        app: cicd-connector-service
+    spec:
+      containers:
+        - name: cicd-connector-service
+          image: sre-copilot/cicd-connector-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8515
+          envFrom:
+            - configMapRef:
+                name: db-config
+            - configMapRef:
+                name: services-config
+            - secretRef:
+                name: common-secrets
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8515
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8515
+            initialDelaySeconds: 20
+            periodSeconds: 30

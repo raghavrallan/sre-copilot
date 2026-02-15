@@ -72,6 +72,9 @@ coverage.xml
 .pytest_cache/
 .tox/
 
+# Kubernetes secrets (real credentials)
+infra/kubernetes/overlays/*/secret-*.yaml
+
 # Misc
 .mypy_cache/
 .dmypy.json

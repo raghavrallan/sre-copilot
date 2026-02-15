@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-service
+  namespace: sre-copilot
+  labels:
+    app: synthetic-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synthetic-service
+  template:
+    metadata:
+      labels:
+        app: synthetic-service
+    spec:
+      containers:
+        - name: synthetic-service
+          image: sre-copilot/synthetic-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8512
+          envFrom:
+            - configMapRef:
+                name: db-config
+            - configMapRef:
+                name: services-config
+            - secretRef:
+                name: common-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8512
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8512
+            initialDelaySeconds: 20
+            periodSeconds: 30
