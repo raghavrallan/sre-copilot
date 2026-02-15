@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-connector-service
+  namespace: sre-copilot
+  labels:
+    app: cloud-connector-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8514
+      targetPort: 8514
+  selector:
+    app: cloud-connector-service

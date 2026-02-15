@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-collector-service
+  namespace: sre-copilot
+  labels:
+    app: metrics-collector-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-collector-service
+  template:
+    metadata:
+      labels:
+        app: metrics-collector-service
+    spec:
+      containers:
+        - name: metrics-collector-service
+          image: sre-copilot/metrics-collector-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8509
+          envFrom:
+            - configMapRef:
+                name: db-config
+            - configMapRef:
+                name: services-config
+            - secretRef:
+                name: common-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8509
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8509
+            initialDelaySeconds: 20
+            periodSeconds: 30

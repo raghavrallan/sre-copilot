@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-service
+  namespace: sre-copilot
+  labels:
+    app: log-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8510
+      targetPort: 8510
+  selector:
+    app: log-service

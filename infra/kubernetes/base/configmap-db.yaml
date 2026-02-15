@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-config
+  namespace: sre-copilot
+data:
+  POSTGRES_HOST: "10.8.14.150"
+  POSTGRES_PORT: "5490"
+  POSTGRES_DB: "srecopilot"
+  ENVIRONMENT: "development"
+  DEBUG: "True"

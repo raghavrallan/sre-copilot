@@ -1,0 +1,58 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sre-copilot
+
+resources:
+  # Namespace
+  - namespace.yaml
+
+  # Configuration
+  - configmap-db.yaml
+  - configmap-services.yaml
+  - secret-common.yaml
+
+  # External dependencies
+  - postgres-external.yaml
+
+  # Redis
+  - redis/statefulset.yaml
+  - redis/service.yaml
+
+  # Backend services
+  - services/api-gateway/deployment.yaml
+  - services/api-gateway/service.yaml
+  - services/auth-service/deployment.yaml
+  - services/auth-service/service.yaml
+  - services/incident-service/deployment.yaml
+  - services/incident-service/service.yaml
+  - services/ai-service/deployment.yaml
+  - services/ai-service/service.yaml
+  - services/integration-service/deployment.yaml
+  - services/integration-service/service.yaml
+  - services/websocket-service/deployment.yaml
+  - services/websocket-service/service.yaml
+  - services/audit-service/deployment.yaml
+  - services/audit-service/service.yaml
+  - services/metrics-collector-service/deployment.yaml
+  - services/metrics-collector-service/service.yaml
+  - services/log-service/deployment.yaml
+  - services/log-service/service.yaml
+  - services/alerting-service/deployment.yaml
+  - services/alerting-service/service.yaml
+  - services/synthetic-service/deployment.yaml
+  - services/synthetic-service/service.yaml
+  - services/security-service/deployment.yaml
+  - services/security-service/service.yaml
+  - services/cloud-connector-service/deployment.yaml
+  - services/cloud-connector-service/service.yaml
+  - services/cicd-connector-service/deployment.yaml
+  - services/cicd-connector-service/service.yaml
+
+  # Frontend
+  - services/frontend/nginx-configmap.yaml
+  - services/frontend/deployment.yaml
+  - services/frontend/service.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: sre-copilot

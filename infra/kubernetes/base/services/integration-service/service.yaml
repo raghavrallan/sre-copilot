@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-service
+  namespace: sre-copilot
+  labels:
+    app: integration-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8504
+      targetPort: 8504
+  selector:
+    app: integration-service

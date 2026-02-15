@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cicd-connector-service
+  namespace: sre-copilot
+  labels:
+    app: cicd-connector-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8515
+      targetPort: 8515
+  selector:
+    app: cicd-connector-service

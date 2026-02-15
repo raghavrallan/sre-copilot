@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-service
+  namespace: sre-copilot
+  labels:
+    app: audit-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8508
+      targetPort: 8508
+  selector:
+    app: audit-service
