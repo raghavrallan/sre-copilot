@@ -54,7 +54,7 @@ done
 # Build frontend
 echo "--- Building sre-copilot/frontend:latest ---"
 VITE_API_GATEWAY_URL="${VITE_API_GATEWAY_URL:-http://localhost:30000}"
-VITE_WEBSOCKET_URL="${VITE_WEBSOCKET_URL:-ws://localhost:30000/ws}"
+VITE_WEBSOCKET_URL="${VITE_WEBSOCKET_URL:-ws://localhost:30000}"
 if docker build \
     -f "$DOCKER_DIR/Dockerfile.frontend" \
     --build-arg VITE_API_GATEWAY_URL="$VITE_API_GATEWAY_URL" \

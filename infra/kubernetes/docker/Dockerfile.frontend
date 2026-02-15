@@ -5,7 +5,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 ARG VITE_API_GATEWAY_URL=http://localhost:30000
-ARG VITE_WEBSOCKET_URL=ws://localhost:30000/ws
+ARG VITE_WEBSOCKET_URL=ws://localhost:30000
 
 COPY frontend/package*.json ./
 RUN npm ci
