@@ -1,32 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
-import { Plus, Save, Trash2, Edit2, LayoutDashboard, Loader2 } from 'lucide-react'
+import { Plus, Save, Loader2, ArrowLeft } from 'lucide-react'
 import api from '../services/api'
-
-type WidgetType = 'line' | 'area' | 'bar' | 'pie' | 'table' | 'billboard'
-
-interface Widget {
-  id: string
-  type: WidgetType
-  title: string
-  query: string
-}
+import WidgetTypePicker, { type WidgetType } from '../components/dashboard/editor/WidgetTypePicker'
+import WidgetConfigPanel, { type WidgetConfig, type WidgetSize } from '../components/dashboard/editor/WidgetConfigPanel'
+import WidgetCard from '../components/dashboard/editor/WidgetCard'
+import TemplateWidgets from '../components/dashboard/editor/TemplateWidgets'
 
 interface ApiWidget {
   id: string
@@ -35,50 +14,28 @@ interface ApiWidget {
   metric_query: string
   width?: number
   height?: number
+  size?: string
 }
 
-interface Dashboard {
+interface DashboardData {
   dashboard_id: string
   name: string
   description: string
   widgets: ApiWidget[]
   variables: Record<string, string>
-  created_at?: string
-  updated_at?: string
 }
 
-const PLACEHOLDER_CHART_DATA = [
-  { name: 'A', value: 400 },
-  { name: 'B', value: 300 },
-  { name: 'C', value: 200 },
-  { name: 'D', value: 278 },
-]
-
-const PLACEHOLDER_LINE_DATA = [
-  { time: '10:00', v: 45 },
-  { time: '10:15', v: 52 },
-  { time: '10:30', v: 48 },
-  { time: '10:45', v: 55 },
-  { time: '11:00', v: 62 },
-  { time: '11:15', v: 58 },
-]
-
-function apiWidgetToWidget(aw: ApiWidget): Widget {
-  return {
-    id: aw.id,
-    type: (aw.type as WidgetType) || 'line',
-    title: aw.title || 'Untitled',
-    query: aw.metric_query || '',
-  }
+function apiToWidget(aw: ApiWidget): WidgetConfig {
+  let size: WidgetSize = '1/3'
+  if (aw.size === '1/2' || aw.size === '2/3' || aw.size === 'full') size = aw.size as WidgetSize
+  else if (aw.width && aw.width >= 4) size = 'full'
+  else if (aw.width && aw.width >= 3) size = '2/3'
+  else if (aw.width && aw.width >= 2) size = '1/2'
+  return { id: aw.id, type: (aw.type as WidgetType) || 'line', title: aw.title || 'Untitled', query: aw.metric_query || '', size }
 }
 
-function widgetToApiWidget(w: Widget): ApiWidget {
-  return {
-    id: w.id,
-    title: w.title,
-    type: w.type,
-    metric_query: w.query,
-  }
+function widgetToApi(w: WidgetConfig): ApiWidget {
+  return { id: w.id, title: w.title, type: w.type, metric_query: w.query, size: w.size }
 }
 
 export default function DashboardEditorPage() {
@@ -87,32 +44,27 @@ export default function DashboardEditorPage() {
   const isNew = !id || id === 'new'
 
   const [loading, setLoading] = useState(!isNew)
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [title, setTitle] = useState('New Dashboard')
   const [description, setDescription] = useState('')
-  const [widgets, setWidgets] = useState<Widget[]>([])
-  const [editingWidget, setEditingWidget] = useState<Widget | null>(null)
-  const [showAddMenu, setShowAddMenu] = useState(false)
-  const [vars, setVars] = useState<Record<string, string>>({ env: 'production', service: 'all' })
+  const [widgets, setWidgets] = useState<WidgetConfig[]>([])
+  const [showTypePicker, setShowTypePicker] = useState(false)
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
+  const [liveData, setLiveData] = useState<Record<string, any[] | null>>({})
+  const [liveLoading, setLiveLoading] = useState<Record<string, boolean>>({})
+  const dragIndexRef = useRef<number | null>(null)
 
+  // Load existing dashboard
   useEffect(() => {
-    if (isNew) {
-      setLoading(false)
-      setTitle('New Dashboard')
-      setWidgets([])
-      setVars({ env: 'production', service: 'all' })
-      return
-    }
+    if (isNew) { setLoading(false); return }
     const fetchDashboard = async () => {
       setLoading(true)
-      setError(null)
       try {
-        const { data } = await api.get<Dashboard>(`/api/v1/dashboards/${id}`)
+        const { data } = await api.get<DashboardData>(`/api/v1/dashboards/${id}`)
         setTitle(data.name || 'Untitled')
         setDescription(data.description || '')
-        setWidgets((data.widgets || []).map(apiWidgetToWidget))
-        setVars(typeof data.variables === 'object' && data.variables ? data.variables : { env: 'production', service: 'all' })
+        setWidgets((data.widgets || []).map(apiToWidget))
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard')
       } finally {
@@ -122,24 +74,127 @@ export default function DashboardEditorPage() {
     fetchDashboard()
   }, [id, isNew])
 
+  // Fetch live data for widgets with queries
+  const fetchLiveData = useCallback(async (widget: WidgetConfig) => {
+    if (!widget.query) return
+    setLiveLoading(prev => ({ ...prev, [widget.id]: true }))
+    try {
+      // Try to fetch real data based on query patterns
+      let data: any[] | null = null
+      const q = widget.query.toLowerCase()
+
+      if (q.includes('incidents') && q.includes('severity')) {
+        const res = await api.get('/api/v1/incidents-stats')
+        const stats = res.data
+        if (stats?.by_severity) {
+          data = Object.entries(stats.by_severity).map(([name, value]) => ({ name, value }))
+        }
+      } else if (q.includes('incidents') && q.includes('active')) {
+        const res = await api.get('/api/v1/incidents-stats')
+        const stats = res.data
+        data = [{ name: 'Active', value: (stats?.by_state?.open || 0) + (stats?.by_state?.investigating || 0) }]
+      } else if (q.includes('error') && q.includes('service')) {
+        const res = await api.get('/api/v1/metrics/services-overview')
+        const services = Array.isArray(res.data?.services) ? res.data.services : (Array.isArray(res.data) ? res.data : [])
+        data = services.slice(0, 10).map((s: any) => ({
+          name: s.name || s.service_name || 'unknown',
+          value: Math.round((s.errorRate ?? s.error_rate ?? 0) * 100) / 100,
+        }))
+      } else if (q.includes('duration') || q.includes('latency')) {
+        const res = await api.get('/api/v1/metrics/services-overview')
+        const services = Array.isArray(res.data?.services) ? res.data.services : (Array.isArray(res.data) ? res.data : [])
+        data = services.slice(0, 10).map((s: any) => ({
+          name: s.name || s.service_name || 'unknown',
+          value: Math.round(s.avgResponseTime ?? s.avg_response_time ?? 0),
+        }))
+      } else if (q.includes('throughput') || q.includes('request.count')) {
+        const res = await api.get('/api/v1/metrics/services-overview')
+        const services = Array.isArray(res.data?.services) ? res.data.services : (Array.isArray(res.data) ? res.data : [])
+        data = services.slice(0, 10).map((s: any) => ({
+          name: s.name || s.service_name || 'unknown',
+          value: s.throughput ?? 0,
+        }))
+      } else if (q.includes('errors') && q.includes('group:message')) {
+        const res = await api.get('/api/v1/errors/groups')
+        const groups = Array.isArray(res.data?.groups) ? res.data.groups : (Array.isArray(res.data) ? res.data : [])
+        data = groups.slice(0, 10).map((g: any) => ({
+          name: g.message || g.type || 'unknown',
+          value: g.count || g.occurrences || 0,
+        }))
+      }
+
+      setLiveData(prev => ({ ...prev, [widget.id]: data }))
+    } catch {
+      setLiveData(prev => ({ ...prev, [widget.id]: null }))
+    } finally {
+      setLiveLoading(prev => ({ ...prev, [widget.id]: false }))
+    }
+  }, [])
+
+  // Fetch live data for all widgets on mount / widget change
+  useEffect(() => {
+    widgets.forEach(w => {
+      if (w.query) fetchLiveData(w)
+    })
+  }, [widgets.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Add widget from type picker
   const addWidget = (type: WidgetType) => {
     const names: Record<WidgetType, string> = {
-      line: 'Line Chart',
-      area: 'Area Chart',
-      bar: 'Bar Chart',
-      pie: 'Pie Chart',
-      table: 'Table',
-      billboard: 'Billboard',
+      line: 'Line Chart', area: 'Area Chart', bar: 'Bar Chart',
+      pie: 'Pie Chart', table: 'Table', billboard: 'Billboard',
     }
-    setWidgets((w) => [...w, { id: `${Date.now()}`, type, title: names[type], query: '' }])
-    setShowAddMenu(false)
+    const newWidget: WidgetConfig = {
+      id: `w-${Date.now()}`, type, title: names[type], query: '', size: '1/3',
+    }
+    setWidgets(prev => [...prev, newWidget])
+    setShowTypePicker(false)
   }
 
-  const deleteWidget = (widgetId: string) => {
-    setWidgets((w) => w.filter((x) => x.id !== widgetId))
+  // Add from template
+  const addFromTemplate = (template: Omit<WidgetConfig, 'id'>) => {
+    const newWidget: WidgetConfig = { ...template, id: `w-${Date.now()}` }
+    setWidgets(prev => [...prev, newWidget])
+    fetchLiveData(newWidget)
+  }
+
+  // Save widget config
+  const saveWidgetConfig = (updated: WidgetConfig) => {
+    setWidgets(prev => prev.map(w => w.id === updated.id ? updated : w))
     setEditingWidget(null)
+    if (updated.query) fetchLiveData(updated)
   }
 
+  // Delete widget
+  const deleteWidget = (widgetId: string) => {
+    setWidgets(prev => prev.filter(w => w.id !== widgetId))
+  }
+
+  // Drag and drop reordering
+  const handleDragStart = (index: number) => (e: React.DragEvent) => {
+    dragIndexRef.current = index
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (_index: number) => (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = (dropIndex: number) => (e: React.DragEvent) => {
+    e.preventDefault()
+    const dragIndex = dragIndexRef.current
+    if (dragIndex === null || dragIndex === dropIndex) return
+    setWidgets(prev => {
+      const copy = [...prev]
+      const [dragged] = copy.splice(dragIndex, 1)
+      copy.splice(dropIndex, 0, dragged)
+      return copy
+    })
+    dragIndexRef.current = null
+  }
+
+  // Save dashboard
   const handleSave = async () => {
     setSaving(true)
     setError(null)
@@ -147,11 +202,11 @@ export default function DashboardEditorPage() {
       const payload = {
         name: title,
         description,
-        widgets: widgets.map(widgetToApiWidget),
-        variables: vars,
+        widgets: widgets.map(widgetToApi),
+        variables: {},
       }
       if (isNew) {
-        const { data } = await api.post<Dashboard>('/api/v1/dashboards', payload)
+        const { data } = await api.post<DashboardData>('/api/v1/dashboards', payload)
         navigate(`/dashboards/${data.dashboard_id}`)
       } else {
         await api.put(`/api/v1/dashboards/${id}`, payload)
@@ -164,126 +219,55 @@ export default function DashboardEditorPage() {
     }
   }
 
-  const renderWidget = (w: Widget) => {
-    switch (w.type) {
-      case 'line':
-        return (
-          <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={PLACEHOLDER_LINE_DATA}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Line type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        )
-      case 'area':
-        return (
-          <ResponsiveContainer width="100%" height={140}>
-            <AreaChart data={PLACEHOLDER_LINE_DATA}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Area type="monotone" dataKey="v" stroke="#10b981" fill="#10b98140" strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        )
-      case 'bar':
-        return (
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={PLACEHOLDER_CHART_DATA}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Bar dataKey="value" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )
-      case 'pie':
-        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']
-        return (
-          <ResponsiveContainer width="100%" height={140}>
-            <PieChart>
-              <Pie data={PLACEHOLDER_CHART_DATA} cx="50%" cy="50%" innerRadius={30} outerRadius={50} paddingAngle={2} dataKey="value">
-                {PLACEHOLDER_CHART_DATA.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-            </PieChart>
-          </ResponsiveContainer>
-        )
-      case 'billboard':
-        return (
-          <div className="flex items-center justify-center h-[140px]">
-            <span className="text-4xl font-bold text-white">—</span>
-            <span className="text-gray-400 ml-2">(query required)</span>
-          </div>
-        )
-      case 'table':
-        return (
-          <div className="overflow-x-auto text-sm">
-            <table className="min-w-full">
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th className="px-2 py-1 text-left text-gray-400">Name</th>
-                  <th className="px-2 py-1 text-left text-gray-400">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {PLACEHOLDER_CHART_DATA.map((r) => (
-                  <tr key={r.name} className="border-b border-gray-600/50">
-                    <td className="px-2 py-1 text-white">{r.name}</td>
-                    <td className="px-2 py-1 text-gray-300">{r.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      default:
-        return <div className="text-gray-400 text-sm">Unknown widget</div>
-    }
-  }
-
   if (loading) {
     return (
-      <div className="px-4 sm:px-0 flex items-center justify-center min-h-[300px]">
-        <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="px-4 sm:px-0">
+    <div className="px-4 sm:px-0 pb-8">
+      {/* Error banner */}
       {error && (
-        <div className="mb-4 bg-red-900/20 border border-red-500/50 rounded-lg p-4 text-red-400">
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
           {error}
         </div>
       )}
+
+      {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/dashboards')} className="text-gray-400 hover:text-white">
-            ← Back
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate('/dashboards')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <ArrowLeft className="w-5 h-5 text-gray-500" />
           </button>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="text-2xl font-bold bg-transparent text-white border-none focus:ring-0 focus:outline-none"
-          />
+          <div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="text-xl font-bold text-gray-900 bg-transparent border-none focus:outline-none focus:ring-0 w-full"
+              placeholder="Dashboard title"
+            />
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="text-sm text-gray-500 bg-transparent border-none focus:outline-none focus:ring-0 w-full mt-0.5"
+              placeholder="Add a description..."
+            />
+          </div>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => navigate('/dashboards')}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
           >
             Discard
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save
@@ -291,130 +275,81 @@ export default function DashboardEditorPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-6">
-        <select
-          value={vars.env ?? 'production'}
-          onChange={(e) => setVars((v) => ({ ...v, env: e.target.value }))}
-          className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
-        >
-          <option value="production">production</option>
-          <option value="staging">staging</option>
-        </select>
-        <select
-          value={vars.service ?? 'all'}
-          onChange={(e) => setVars((v) => ({ ...v, service: e.target.value }))}
-          className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
-        >
-          <option value="all">All services</option>
-          <option value="api-gateway">api-gateway</option>
-          <option value="auth-service">auth-service</option>
-        </select>
-      </div>
-
+      {/* Main content */}
       <div className="flex gap-6">
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {widgets.map((w) => (
-            <div
-              key={w.id}
-              className="bg-gray-800 rounded-lg border border-gray-700/50 overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
-                <span className="text-sm font-medium text-white">{w.title}</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setEditingWidget(w)}
-                    className="p-1 text-gray-400 hover:text-white"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => deleteWidget(w.id)}
-                    className="p-1 text-gray-400 hover:text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 min-h-[160px]">{renderWidget(w)}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="w-64 flex-shrink-0">
-          <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4 sticky top-4">
-            <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-              <LayoutDashboard className="w-4 h-4" />
-              Add Widget
-            </h3>
-            <div className="relative">
+        {/* Widget grid */}
+        <div className="flex-1 min-w-0">
+          {widgets.length === 0 ? (
+            <div className="border-2 border-dashed border-gray-200 rounded-2xl p-12 text-center">
+              <Plus className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-lg font-medium text-gray-600 mb-1">No widgets yet</h3>
+              <p className="text-sm text-gray-400 mb-4">Add widgets from the panel on the right, or use a quick template</p>
               <button
-                onClick={() => setShowAddMenu(!showAddMenu)}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                onClick={() => setShowTypePicker(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                Add Widget
+                Add First Widget
               </button>
-              {showAddMenu && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-10">
-                  {(['line', 'area', 'bar', 'pie', 'table', 'billboard'] as WidgetType[]).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => addWidget(t)}
-                      className="w-full px-4 py-2 text-left text-sm text-white hover:bg-gray-600 capitalize"
-                    >
-                      {t === 'billboard' ? 'Billboard' : t === 'line' ? 'Line Chart' : t === 'area' ? 'Area Chart' : t === 'bar' ? 'Bar Chart' : t === 'pie' ? 'Pie Chart' : 'Table'}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {widgets.map((w, index) => (
+                <WidgetCard
+                  key={w.id}
+                  widget={w}
+                  liveData={liveData[w.id]}
+                  liveLoading={liveLoading[w.id]}
+                  onEdit={() => setEditingWidget(w)}
+                  onDelete={() => deleteWidget(w.id)}
+                  onDragStart={handleDragStart(index)}
+                  onDragOver={handleDragOver(index)}
+                  onDrop={handleDrop(index)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="w-64 flex-shrink-0 space-y-4">
+          {/* Add widget button */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <button
+              onClick={() => setShowTypePicker(true)}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Widget
+            </button>
+          </div>
+
+          {/* Templates */}
+          <TemplateWidgets onAdd={addFromTemplate} />
+
+          {/* Widget count */}
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+            <p className="text-2xl font-bold text-gray-900">{widgets.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">widget{widgets.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
       </div>
 
+      {/* Type picker modal */}
+      {showTypePicker && (
+        <WidgetTypePicker
+          onSelect={addWidget}
+          onClose={() => setShowTypePicker(false)}
+        />
+      )}
+
+      {/* Config panel modal */}
       {editingWidget && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 w-full max-w-lg">
-            <h3 className="text-lg font-semibold text-white mb-4">Edit Widget</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Title</label>
-                <input
-                  value={editingWidget.title}
-                  onChange={(e) => setEditingWidget((w) => w ? { ...w, title: e.target.value } : null)}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">SRE-QL Query</label>
-                <textarea
-                  value={editingWidget.query}
-                  onChange={(e) => setEditingWidget((w) => w ? { ...w, query: e.target.value } : null)}
-                  rows={4}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-mono text-sm"
-                  placeholder="metric:http.request.duration | service:api-gateway"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEditingWidget(null)}
-                  className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => {
-                    setWidgets((ws) => ws.map((x) => (x.id === editingWidget.id ? editingWidget : x)))
-                    setEditingWidget(null)
-                  }}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <WidgetConfigPanel
+          widget={editingWidget}
+          onSave={saveWidgetConfig}
+          onClose={() => setEditingWidget(null)}
+        />
       )}
     </div>
   )
