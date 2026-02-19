@@ -3,7 +3,7 @@ uvicorn[standard]==0.27.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 httpx==0.26.0
-redis==5.0.1
+redis==7.2.0
 psycopg2-binary==2.9.9
 Django==5.0.1
 python-dotenv==1.0.0
