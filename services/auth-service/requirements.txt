@@ -12,7 +12,7 @@ psycopg2-binary==2.9.9
 Django==5.0.1
 python-dotenv==1.0.0
 httpx==0.26.0
-cryptography==42.0.0
+cryptography==46.0.5
 prometheus-fastapi-instrumentator>=6.0.0
 
 # Testing
