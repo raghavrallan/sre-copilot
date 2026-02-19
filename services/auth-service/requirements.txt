@@ -9,7 +9,7 @@ bcrypt==4.0.1
 python-multipart==0.0.6
 redis==5.0.1
 psycopg2-binary==2.9.9
-Django==5.0.1
+Django==6.0.2
 python-dotenv==1.0.0
 httpx==0.26.0
 cryptography==42.0.0
