@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../lib/stores/auth-store'
 import ProjectSwitcher from './ProjectSwitcher'
+import Logo from './Logo'
 
 interface NavGroup {
   label: string
@@ -33,6 +34,7 @@ const navGroups: NavGroup[] = [
     label: 'Analyze',
     items: [
       { to: '/dashboards', label: 'Dashboards' },
+      { to: '/dashboards/grafana', label: 'Grafana' },
       { to: '/analytics', label: 'AI Analytics' },
       { to: '/synthetics', label: 'Synthetics' },
       { to: '/deployments', label: 'Deployments' },
@@ -107,8 +109,8 @@ export default function Layout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <Link to="/" className="flex items-center px-2 text-xl font-bold text-blue-600">
-                SRE Copilot
+              <Link to="/" className="flex items-center px-2">
+                <Logo size="sm" />
               </Link>
               <div className="hidden sm:ml-6 sm:flex sm:items-center sm:space-x-6">
                 <Link

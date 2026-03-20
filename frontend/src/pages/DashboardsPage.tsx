@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Plus, BarChart2, Server, FileText, AlertTriangle, Loader2, Trash2 } from 'lucide-react'
+import { LayoutDashboard, Plus, BarChart2, Server, FileText, AlertTriangle, Loader2, Trash2, ExternalLink } from 'lucide-react'
 import api from '../services/api'
 
 interface DashboardWidget {
@@ -126,6 +126,27 @@ export default function DashboardsPage() {
           Create Dashboard
         </Link>
       </div>
+
+      {/* Grafana Banner */}
+      <Link
+        to="/dashboards/grafana"
+        className="mb-8 flex items-center justify-between bg-gradient-to-r from-orange-500/10 to-yellow-500/10 border border-orange-500/30 rounded-xl p-5 hover:border-orange-400/50 transition-colors group"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center">
+            <BarChart2 className="w-6 h-6 text-orange-400" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-white group-hover:text-orange-300 transition-colors">
+              Grafana Dashboards
+            </h3>
+            <p className="text-sm text-gray-400">
+              View and analyze dashboards from your connected Grafana instance
+            </p>
+          </div>
+        </div>
+        <ExternalLink className="w-5 h-5 text-gray-500 group-hover:text-orange-400 transition-colors" />
+      </Link>
 
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-white mb-4">Pre-built Templates</h2>

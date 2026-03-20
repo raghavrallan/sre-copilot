@@ -1,21 +1,95 @@
-import { useAuthStore } from '../../lib/stores/auth-store';
+import { useState } from 'react'
+import { Pencil, Check, X, Loader2 } from 'lucide-react'
+import { useAuthStore } from '../../lib/stores/auth-store'
+import api from '../../services/api'
+import toast from 'react-hot-toast'
 
 export default function GeneralSettings() {
-  const { user, currentProject } = useAuthStore();
+  const { user, currentProject } = useAuthStore()
+  const [editing, setEditing] = useState(false)
+  const [fullName, setFullName] = useState(user?.full_name ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!fullName.trim()) {
+      toast.error('Name cannot be empty')
+      return
+    }
+    setSaving(true)
+    try {
+      const { data } = await api.patch('/api/v1/auth/profile', {
+        full_name: fullName.trim(),
+      })
+      const authStore = useAuthStore.getState()
+      if (authStore.user) {
+        useAuthStore.setState({
+          user: { ...authStore.user, full_name: data.full_name },
+        })
+      }
+      toast.success('Profile updated')
+      setEditing(false)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to update profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancel = () => {
+    setFullName(user?.full_name ?? '')
+    setEditing(false)
+  }
 
   return (
     <div className="space-y-6">
       {/* Profile Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-base font-semibold text-gray-900 mb-4">Profile</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-900">Profile</h3>
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit
+            </button>
+          )}
+        </div>
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white text-xl font-semibold flex-shrink-0">
-            {user?.full_name?.charAt(0).toUpperCase() || 'U'}
+            {(editing ? fullName : user?.full_name)?.charAt(0).toUpperCase() || 'U'}
           </div>
           <div className="flex-1 grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Full Name</label>
-              <p className="text-sm text-gray-900">{user?.full_name || '-'}</p>
+              {editing ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={saving}
+                    className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-900">{user?.full_name || '-'}</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
@@ -79,16 +153,6 @@ export default function GeneralSettings() {
           <p className="text-sm text-gray-500">No project selected</p>
         )}
       </div>
-
-      {/* Preferences Coming Soon */}
-      <div className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-6 text-center">
-        <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        <p className="text-sm font-medium text-gray-900">Preferences</p>
-        <p className="text-xs text-gray-500 mt-1">Theme, timezone, and other settings coming soon</p>
-      </div>
     </div>
-  );
+  )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Modal from '../Modal';
 import { Project, updateProject, deleteProject } from '../../services/projects-api';
 import { useAuthStore } from '../../lib/stores/auth-store';
 
@@ -254,7 +255,7 @@ export default function ProjectCard({
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <Modal onClose={() => setShowDeleteConfirm(false)}>
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Deactivate Project</h3>
             <p className="text-gray-600 mb-4">
@@ -277,7 +278,7 @@ export default function ProjectCard({
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

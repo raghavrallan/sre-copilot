@@ -1,0 +1,768 @@
+"""
+Grafana Proxy API - fetches dashboards, panels, and metadata from
+the user's Grafana instance via the stored MonitoringIntegration credentials.
+"""
+import logging
+import re
+from typing import Optional
+
+import httpx
+from asgiref.sync import sync_to_async
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query
+from fastapi.responses import Response
+from pydantic import BaseModel
+
+from app.api.proxy import get_current_user_from_token
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/grafana", tags=["Grafana"])
+
+@sync_to_async
+def _get_grafana_credentials(project_id: str):
+    """Look up the active Grafana MonitoringIntegration for a project."""
+    from shared.models.monitoring_integration import MonitoringIntegration
+
+    integration = (
+        MonitoringIntegration.objects
+        .filter(project_id=project_id, integration_type="grafana")
+        .exclude(status="error")
+        .order_by("-is_primary", "-created_at")
+        .first()
+    )
+    if not integration:
+        return None
+
+    url = integration.url.rstrip("/")
+    api_key = ""
+    username = integration.username or ""
+    password = ""
+
+    try:
+        api_key = integration.get_api_key() or ""
+    except Exception as e:
+        logger.warning("Failed to decrypt Grafana API key: %s", e)
+
+    try:
+        password = integration.get_password() or ""
+    except Exception as e:
+        logger.warning("Failed to decrypt Grafana password: %s", e)
+
+    return {
+        "url": url,
+        "api_key": api_key,
+        "username": username,
+        "password": password,
+        "integration_id": str(integration.id),
+        "name": integration.name,
+    }
+
+
+def _extract_token(request: Request, authorization: Optional[str] = None) -> str:
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return token
+
+
+async def _require_grafana(request: Request, authorization: Optional[str] = Header(None)):
+    """Dependency: resolve Grafana credentials or 404."""
+    user = await get_current_user_from_token(request, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    project_id = user.get("project_id") or user.get("current_project_id")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="No project selected")
+
+    creds = await _get_grafana_credentials(project_id)
+    if not creds:
+        raise HTTPException(status_code=404, detail="No Grafana integration configured for this project")
+
+    return creds
+
+
+def _grafana_auth(creds: dict) -> tuple[dict, Optional[httpx.BasicAuth]]:
+    """Build headers and optional basic auth from credentials."""
+    headers = {"Accept": "application/json"}
+    auth = None
+    if creds.get("api_key"):
+        headers["Authorization"] = f"Bearer {creds['api_key']}"
+    elif creds.get("username") and creds.get("password"):
+        auth = httpx.BasicAuth(creds["username"], creds["password"])
+    return headers, auth
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/dashboards")
+async def list_dashboards(
+    request: Request,
+    creds: dict = Depends(_require_grafana),
+):
+    """List all dashboards from the user's Grafana instance."""
+    url = creds["url"]
+    headers, auth = _grafana_auth(creds)
+
+    logger.info("Fetching Grafana dashboards from %s", url)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{url}/api/search", params={"type": "dash-db", "limit": 100}, headers=headers, auth=auth)
+    except httpx.ConnectError as e:
+        logger.error("Cannot connect to Grafana at %s: %s", url, e)
+        raise HTTPException(status_code=502, detail=f"Cannot connect to Grafana at {url}. Ensure the URL is reachable from the server.")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"Grafana at {url} timed out")
+    except Exception as e:
+        logger.error("Grafana request failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Grafana request failed: {str(e)}")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Grafana returned {resp.status_code}: {resp.text[:300]}")
+
+    raw = resp.json()
+    dashboards = []
+    for d in raw:
+        dashboards.append({
+            "uid": d.get("uid"),
+            "title": d.get("title"),
+            "url": d.get("url"),
+            "tags": d.get("tags", []),
+            "type": d.get("type"),
+            "folderTitle": d.get("folderTitle", "General"),
+            "folderUid": d.get("folderUid"),
+            "isStarred": d.get("isStarred", False),
+        })
+
+    return {
+        "grafana_url": url,
+        "grafana_name": creds["name"],
+        "dashboards": dashboards,
+    }
+
+
+@router.get("/dashboards/{uid}")
+async def get_dashboard(
+    uid: str,
+    request: Request,
+    creds: dict = Depends(_require_grafana),
+):
+    """Fetch a single dashboard with all panel definitions."""
+    url = creds["url"]
+    headers, auth = _grafana_auth(creds)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{url}/api/dashboards/uid/{uid}", headers=headers, auth=auth)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach Grafana: {e}")
+
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="Dashboard not found in Grafana")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Grafana returned {resp.status_code}")
+
+    data = resp.json()
+    dash = data.get("dashboard", {})
+    meta = data.get("meta", {})
+
+    sections = []
+    current_section = {"title": "", "collapsed": False, "panels": []}
+
+    for p in dash.get("panels", []):
+        if p.get("type") == "row":
+            if current_section["panels"]:
+                sections.append(current_section)
+            current_section = {
+                "title": p.get("title", ""),
+                "collapsed": p.get("collapsed", False),
+                "panels": [],
+            }
+            for inner in p.get("panels", []):
+                current_section["panels"].append(_serialize_panel(inner))
+            continue
+        current_section["panels"].append(_serialize_panel(p))
+
+    if current_section["panels"]:
+        sections.append(current_section)
+
+    all_panels = []
+    for s in sections:
+        all_panels.extend(s["panels"])
+
+    return {
+        "uid": dash.get("uid"),
+        "title": dash.get("title"),
+        "description": dash.get("description", ""),
+        "tags": dash.get("tags", []),
+        "timezone": dash.get("timezone", ""),
+        "version": dash.get("version"),
+        "folder": meta.get("folderTitle", "General"),
+        "created": meta.get("created"),
+        "updated": meta.get("updated"),
+        "createdBy": meta.get("createdBy"),
+        "updatedBy": meta.get("updatedBy"),
+        "grafana_url": creds["url"],
+        "panels": all_panels,
+        "sections": sections,
+    }
+
+
+def _serialize_panel(p: dict) -> dict:
+    targets = []
+    for t in p.get("targets", []):
+        targets.append({
+            "expr": t.get("expr", t.get("rawSql", t.get("query", ""))),
+            "legendFormat": t.get("legendFormat", ""),
+            "refId": t.get("refId", ""),
+            "datasource": t.get("datasource"),
+        })
+
+    return {
+        "id": p.get("id"),
+        "title": p.get("title", ""),
+        "type": p.get("type", ""),
+        "description": p.get("description", ""),
+        "datasource": p.get("datasource"),
+        "gridPos": p.get("gridPos", {}),
+        "targets": targets,
+        "thresholds": p.get("fieldConfig", {}).get("defaults", {}).get("thresholds"),
+        "alert": p.get("alert"),
+    }
+
+
+@router.get("/dashboards/{uid}/panels/{panel_id}/render")
+async def render_panel(
+    uid: str,
+    panel_id: int,
+    request: Request,
+    width: int = Query(600, ge=100, le=2000),
+    height: int = Query(350, ge=100, le=1200),
+    creds: dict = Depends(_require_grafana),
+):
+    """Proxy Grafana's server-side panel render (requires image-renderer plugin)."""
+    url = creds["url"]
+    headers, auth = _grafana_auth(creds)
+
+    render_url = f"{url}/render/d-solo/{uid}"
+    params = {
+        "orgId": 1,
+        "panelId": panel_id,
+        "width": width,
+        "height": height,
+        "from": "now-6h",
+        "to": "now",
+        "theme": "light",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(render_url, params=params, headers=headers, auth=auth)
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Cannot connect to Grafana render endpoint")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Grafana render timed out")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Grafana render returned {resp.status_code}. Image-renderer plugin may not be installed.",
+        )
+
+    ct = resp.headers.get("content-type", "image/png")
+    return Response(content=resp.content, media_type=ct)
+
+
+@router.get("/dashboards/{uid}/panels/{panel_id}/embed-url")
+async def get_panel_embed_url(
+    uid: str,
+    panel_id: int,
+    request: Request,
+    creds: dict = Depends(_require_grafana),
+):
+    """Return the solo-panel embed URL for iframe embedding."""
+    base = creds["url"]
+    embed_url = f"{base}/d-solo/{uid}?panelId={panel_id}&theme=light"
+    return {"embed_url": embed_url}
+
+
+class QueryPanelRequest(BaseModel):
+    dashboard_uid: str
+    panel_id: int
+    from_time: str = "now-6h"
+    to_time: str = "now"
+    max_data_points: int = 80
+
+
+@router.post("/query-panel")
+async def query_panel_data(
+    body: QueryPanelRequest,
+    request: Request,
+    creds: dict = Depends(_require_grafana),
+):
+    """Query actual metric data for a panel via Grafana's datasource proxy."""
+    url = creds["url"]
+    gfn_headers, gfn_auth = _grafana_auth(creds)
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.get(
+                f"{url}/api/dashboards/uid/{body.dashboard_uid}",
+                headers=gfn_headers, auth=gfn_auth,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Cannot reach Grafana: {e}")
+
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Could not fetch dashboard")
+
+        raw = resp.json()
+        dash = raw.get("dashboard", {})
+
+        panel = _find_panel(dash, body.panel_id)
+        if not panel:
+            raise HTTPException(status_code=404, detail="Panel not found")
+
+        targets = panel.get("targets", [])
+        if not targets:
+            return {"series": [], "panel_type": panel.get("type", "unknown")}
+
+        # Resolve template variables from dashboard templating
+        var_map = _build_var_map(dash)
+
+        # Fetch actual datasources so we can resolve ${ds_...} UIDs
+        try:
+            ds_resp = await client.get(f"{url}/api/datasources", headers=gfn_headers, auth=gfn_auth)
+            all_datasources = ds_resp.json() if ds_resp.status_code == 200 else []
+        except Exception:
+            all_datasources = []
+
+        # Note: we intentionally do NOT call _resolve_all_vars here.
+        # All non-datasource template variables use =~".+" regex matching
+        # which is more reliable than trying to pick specific label values
+        # that may be stale or wrong.
+
+        # Find the Prometheus datasource numeric ID for direct proxy queries
+        prom_ds = next((d for d in all_datasources if d.get("type") == "prometheus"), None)
+        if not prom_ds:
+            return {"series": [], "panel_type": panel.get("type", "unknown")}
+        prom_id = prom_ds["id"]
+
+        # Resolve and execute each target query via Prometheus API directly
+        import time
+        now = int(time.time())
+        start = now - 6 * 3600
+        step = max(60, (6 * 3600) // body.max_data_points)
+
+        all_series = []
+        for idx, t in enumerate(targets):
+            raw_expr = t.get("expr", "")
+            expr = _resolve_expr(raw_expr, var_map)
+            if not expr:
+                continue
+            ref_id = t.get("refId") or chr(65 + idx)
+
+            try:
+                qr = await client.get(
+                    f"{url}/api/datasources/proxy/{prom_id}/api/v1/query_range",
+                    params={"query": expr, "start": start, "end": now, "step": step},
+                    headers=gfn_headers, auth=gfn_auth,
+                    timeout=20,
+                )
+            except Exception:
+                continue
+
+            if qr.status_code != 200:
+                continue
+
+            prom_data = qr.json()
+            if prom_data.get("status") != "success":
+                continue
+
+            for result in prom_data.get("data", {}).get("result", []):
+                metric = result.get("metric", {})
+                label_parts = [v for v in metric.values()]
+                name = ", ".join(label_parts[:3]) if label_parts else ref_id
+
+                datapoints = []
+                for ts_val in result.get("values", []):
+                    ts_ms = int(float(ts_val[0]) * 1000)
+                    try:
+                        v = float(ts_val[1])
+                        datapoints.append({"t": ts_ms, "v": round(v, 4)})
+                    except (ValueError, TypeError):
+                        pass
+
+                if datapoints:
+                    all_series.append({"name": name, "ref_id": ref_id, "data": datapoints})
+
+    return {"series": all_series, "panel_type": panel.get("type", "unknown")}
+
+
+def _build_var_map(dash: dict) -> dict:
+    """Extract current values of all template variables from the dashboard.
+
+    Variables set to "All" are marked with a __all_<name> flag so that
+    _resolve_expr can switch the PromQL operator from = to =~ for them.
+    """
+    var_map = {}
+    for v in dash.get("templating", {}).get("list", []):
+        name = v.get("name", "")
+        if not name:
+            continue
+        if v.get("type") == "datasource":
+            var_map[f"__ds_type_{name}"] = v.get("query", "")
+            current = v.get("current", {}).get("value", "")
+            if current and not current.startswith("$"):
+                var_map[name] = current
+            continue
+
+        # Always use regex match for label variables to avoid stale saved values.
+        # Grafana dashboards may be saved with values that don't match
+        # the currently running infrastructure.
+        val = ".+"
+        var_map[f"__all_{name}"] = True
+        var_map[name] = val
+    return var_map
+
+
+def _resolve_datasource(ds: any, var_map: dict, all_datasources: list) -> dict:
+    """Resolve template-variable datasource UIDs to actual UIDs."""
+    if isinstance(ds, str):
+        ds = {"uid": ds}
+    if not isinstance(ds, dict):
+        ds = {}
+
+    uid = ds.get("uid", "")
+    ds_type = ds.get("type", "")
+
+    # If UID is a template variable like ${ds_prometheus}
+    if uid.startswith("${") and uid.endswith("}"):
+        var_name = uid[2:-1]
+        # Check if we have a resolved value
+        if var_name in var_map:
+            ds["uid"] = var_map[var_name]
+            return ds
+        # Try to find the datasource type from the variable definition
+        actual_type = var_map.get(f"__ds_type_{var_name}", ds_type)
+        for ads in all_datasources:
+            if ads.get("type") == actual_type or ads.get("typeName", "").lower() == actual_type:
+                ds["uid"] = ads["uid"]
+                ds["type"] = ads["type"]
+                return ds
+    elif uid.startswith("$"):
+        var_name = uid[1:]
+        if var_name in var_map:
+            ds["uid"] = var_map[var_name]
+            return ds
+
+    # If UID is still templated and we have a type, find by type
+    if not uid or uid.startswith("$"):
+        for ads in all_datasources:
+            if ads.get("type") == ds_type:
+                ds["uid"] = ads["uid"]
+                ds["type"] = ads["type"]
+                return ds
+        # Fallback: pick the first Prometheus datasource
+        for ads in all_datasources:
+            if ads.get("type") == "prometheus":
+                ds["uid"] = ads["uid"]
+                ds["type"] = "prometheus"
+                return ds
+
+    return ds
+
+
+_BUILTINS = {
+    "__rate_interval": "5m",
+    "__interval": "1m",
+    "__interval_ms": "60000",
+    "__range": "6h",
+    "__range_s": "21600",
+    "__range_ms": "21600000",
+}
+
+def _resolve_expr(expr: str, var_map: dict) -> str:
+    """Replace Grafana template variables in a PromQL expression.
+
+    For variables that were set to "All" (flagged in var_map), we also
+    convert the PromQL selector operator from ``=`` to ``=~`` so the
+    regex pattern actually works.
+    """
+    if not expr:
+        return expr
+
+    # 1. Replace built-in variables first
+    for bi, bv in _BUILTINS.items():
+        expr = expr.replace("${" + bi + "}", bv)
+        expr = expr.replace("$" + bi, bv)
+
+    # 2. For "All" variables, fix the operator AND substitute the value.
+    #    Pattern: label_name="$var" or label_name="${var}"  ->  label_name=~".+"
+    all_vars = {k[6:] for k in var_map if k.startswith("__all_")}
+    for vname in all_vars:
+        val = var_map.get(vname, ".+")
+        # Handle: ='$var', ="${var}", ="$var", ='${var}'
+        pat = re.compile(
+            r"""(\w+)\s*=\s*(?:"|')?\$\{?""" + re.escape(vname) + r"""\}?(?:"|')?"""
+        )
+        expr = pat.sub(rf'\1=~"{val}"', expr)
+
+    # 3. Substitute remaining (non-All) variables
+    def _sub(m):
+        name = m.group(1) or m.group(2)
+        if name in _BUILTINS or name.startswith("__"):
+            return m.group(0)
+        if name in var_map:
+            return var_map[name]
+        return m.group(0)
+
+    expr = re.compile(r'\$\{(\w+)\}|\$(\w+)').sub(_sub, expr)
+    return expr
+
+
+async def _resolve_all_vars(
+    dash: dict, var_map: dict, all_datasources: list,
+    url: str, headers: dict, auth, client: httpx.AsyncClient,
+):
+    """For variables still flagged as 'All' (no saved options), try to
+    fetch a concrete first-value from Prometheus label values so the
+    queries actually return data."""
+    prom_ds = next((d for d in all_datasources if d.get("type") == "prometheus"), None)
+    if not prom_ds:
+        return
+
+    prom_id = prom_ds.get("id")
+
+    for v in dash.get("templating", {}).get("list", []):
+        name = v.get("name", "")
+        if not name or f"__all_{name}" not in var_map:
+            continue
+
+        # Try to parse the variable's query to figure out the label name.
+        # Common patterns: "label_values(metric, label)" or "label_values(label)"
+        vquery = v.get("query", "")
+        if isinstance(vquery, dict):
+            vquery = vquery.get("query", "")
+
+        label_name = None
+        m = re.match(r'label_values\(\s*\w+\s*,\s*(\w+)\s*\)', vquery)
+        if m:
+            label_name = m.group(1)
+        else:
+            m2 = re.match(r'label_values\(\s*(\w+)\s*\)', vquery)
+            if m2:
+                label_name = m2.group(1)
+
+        if not label_name:
+            continue
+
+        try:
+            lv_resp = await client.get(
+                f"{url}/api/datasources/proxy/{prom_id}/api/v1/label/{label_name}/values",
+                headers=headers, auth=auth,
+            )
+            if lv_resp.status_code == 200:
+                values = lv_resp.json().get("data", [])
+                if values:
+                    var_map[name] = values[0]
+                    del var_map[f"__all_{name}"]
+                    print(f"[grafana] Resolved ${name} -> {values[0]} (from {len(values)} label values)", flush=True)
+        except Exception as e:
+            print(f"[grafana] Failed to resolve ${name}: {e}", flush=True)
+
+
+def _find_panel(dash: dict, panel_id: int) -> Optional[dict]:
+    for p in dash.get("panels", []):
+        if p.get("id") == panel_id:
+            return p
+        if p.get("type") == "row":
+            for inner in p.get("panels", []):
+                if inner.get("id") == panel_id:
+                    return inner
+    return None
+
+
+def _parse_ds_query_response(result: dict) -> list:
+    """Convert Grafana ds/query response into a simple list of series."""
+    series = []
+    for ref_id, ref_data in result.get("results", {}).items():
+        frames = ref_data.get("frames", [])
+        for frame in ref_data.get("frames", []):
+            schema = frame.get("schema", {})
+            data = frame.get("data", {})
+            fields = schema.get("fields", [])
+            values = data.get("values", [])
+
+            if len(fields) < 2 or len(values) < 2:
+                continue
+
+            timestamps = values[0]
+            for fi in range(1, len(fields)):
+                if fi >= len(values):
+                    break
+                metric_vals = values[fi]
+                field = fields[fi]
+
+                label_parts = []
+                labels = field.get("labels", {})
+                if labels:
+                    label_parts = [f"{v}" for v in labels.values()]
+                name = ", ".join(label_parts) if label_parts else field.get("name", ref_id)
+
+                datapoints = []
+                for ti, ts in enumerate(timestamps):
+                    v = metric_vals[ti] if ti < len(metric_vals) else None
+                    if v is not None:
+                        datapoints.append({"t": ts, "v": round(v, 4) if isinstance(v, float) else v})
+
+                if datapoints:
+                    series.append({"name": name, "ref_id": ref_id, "data": datapoints})
+
+    return series
+
+
+class AnalyzeRequest(BaseModel):
+    dashboard_uid: str
+    panel_ids: Optional[list] = None
+
+
+@router.post("/analyze")
+async def analyze_dashboard(
+    body: AnalyzeRequest,
+    request: Request,
+    creds: dict = Depends(_require_grafana),
+):
+    """Fetch dashboard metadata and send it to the AI service for analysis."""
+    url = creds["url"]
+    headers, auth = _grafana_auth(creds)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{url}/api/dashboards/uid/{body.dashboard_uid}", headers=headers, auth=auth)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach Grafana: {e}")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not fetch dashboard from Grafana")
+
+    data = resp.json()
+    dash = data.get("dashboard", {})
+
+    panels_for_ai = []
+    for p in dash.get("panels", []):
+        if p.get("type") == "row":
+            for inner in p.get("panels", []):
+                panels_for_ai.append(_panel_summary(inner))
+            continue
+        panels_for_ai.append(_panel_summary(p))
+
+    if body.panel_ids:
+        panels_for_ai = [p for p in panels_for_ai if p["id"] in body.panel_ids]
+
+    # Also try to fetch active Grafana alerts
+    alerts = []
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            alert_resp = await client.get(f"{url}/api/alerts", headers=headers, auth=auth)
+            if alert_resp.status_code == 200:
+                for a in alert_resp.json():
+                    if a.get("dashboardUid") == body.dashboard_uid:
+                        alerts.append({
+                            "name": a.get("name"),
+                            "state": a.get("state"),
+                            "panelId": a.get("panelId"),
+                        })
+    except Exception:
+        pass
+
+    # Send to AI service
+    ai_payload = {
+        "dashboard_title": dash.get("title", "Unknown"),
+        "dashboard_description": dash.get("description", ""),
+        "panels": panels_for_ai,
+        "alerts": alerts,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            ai_resp = await client.post(
+                f"{settings.AI_SERVICE_URL}/analyze-dashboard",
+                json=ai_payload,
+            )
+            if ai_resp.status_code == 200:
+                return ai_resp.json()
+            logger.warning("AI service returned %s: %s", ai_resp.status_code, ai_resp.text[:200])
+    except Exception as e:
+        logger.warning("AI service unreachable: %s", e)
+
+    return _fallback_analysis(ai_payload)
+
+
+def _panel_summary(p: dict) -> dict:
+    queries = []
+    for t in p.get("targets", []):
+        expr = t.get("expr", t.get("rawSql", t.get("query", "")))
+        if expr:
+            queries.append(expr)
+    return {
+        "id": p.get("id"),
+        "title": p.get("title", "Untitled"),
+        "type": p.get("type", "unknown"),
+        "queries": queries,
+        "has_alert": bool(p.get("alert")),
+        "thresholds": p.get("fieldConfig", {}).get("defaults", {}).get("thresholds"),
+    }
+
+
+def _fallback_analysis(payload: dict) -> dict:
+    """Basic rule-based analysis when the AI service is unavailable."""
+    insights = []
+    panel_count = len(payload.get("panels", []))
+    alert_count = len(payload.get("alerts", []))
+    firing = [a for a in payload.get("alerts", []) if a.get("state") in ("alerting", "pending")]
+
+    if firing:
+        insights.append({
+            "severity": "critical",
+            "title": f"{len(firing)} alert(s) currently firing",
+            "description": ", ".join(a["name"] for a in firing),
+            "recommendation": "Investigate the firing alerts immediately. Check the linked panels for root cause.",
+        })
+
+    for panel in payload.get("panels", []):
+        for q in panel.get("queries", []):
+            if "error" in q.lower() or "5xx" in q.lower() or "error_rate" in q.lower():
+                insights.append({
+                    "severity": "warning",
+                    "title": f"Panel \"{panel['title']}\" tracks errors",
+                    "description": f"Query: {q[:120]}",
+                    "recommendation": "Check if error rates are within acceptable thresholds.",
+                })
+                break
+
+    if not insights:
+        insights.append({
+            "severity": "info",
+            "title": "Dashboard looks healthy",
+            "description": f"Analyzed {panel_count} panels and {alert_count} alert rules. No immediate issues detected.",
+            "recommendation": "Continue monitoring. Consider setting up alert rules for critical panels.",
+        })
+
+    return {
+        "dashboard_title": payload.get("dashboard_title", ""),
+        "summary": f"Analyzed {panel_count} panels, {alert_count} alert rules, {len(firing)} firing.",
+        "insights": insights,
+        "ai_powered": False,
+    }

@@ -175,6 +175,50 @@ async def refresh_token(request: Request, response: Response):
         return backend_response.json()
 
 
+@router.patch("/auth/profile")
+async def update_profile(request: Request, authorization: Optional[str] = Header(None)):
+    """Proxy to auth service - update profile"""
+    token = get_token_from_request(request, authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    body = await request.json()
+    cookies = request.cookies
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.patch(
+            f"{settings.AUTH_SERVICE_URL}/profile",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=cookies,
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to update profile')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
+@router.post("/auth/change-password")
+async def change_password(request: Request, authorization: Optional[str] = Header(None)):
+    """Proxy to auth service - change password"""
+    token = get_token_from_request(request, authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    body = await request.json()
+    cookies = request.cookies
+
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/change-password",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+            cookies=cookies,
+        )
+        if response.status_code != 200:
+            error_message = get_error_message(response, 'Failed to change password')
+            raise HTTPException(status_code=response.status_code, detail=error_message)
+        return response.json()
+
+
 @router.post("/auth/logout")
 async def logout(response: Response):
     """Proxy to auth service - logout"""

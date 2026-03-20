@@ -221,14 +221,22 @@ export default function PrometheusMetrics({ serviceName }: PrometheusMetricsProp
                 Last tested: {new Date(grafana.last_test_at).toLocaleString()}
               </p>
             )}
-            <a
-              href={`${grafana.url}/explore`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-yellow-700 hover:text-yellow-800"
-            >
-              Open in Grafana <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            <div className="flex items-center gap-3">
+              <a
+                href={`${grafana.url}/explore`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-yellow-700 hover:text-yellow-800"
+              >
+                Open in Grafana <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <a
+                href="/dashboards/grafana"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                View Dashboards <BarChart3 className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         )}
       </div>

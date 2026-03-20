@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Modal from '../Modal'
 import {
   Github,
   Loader2,
@@ -39,23 +40,23 @@ const PROVIDER_CONFIG: Record<
 > = {
   github: {
     name: 'GitHub',
-    colors: 'border-gray-500/50 bg-gray-500/5',
-    icon: <Github className="w-8 h-8 text-gray-300" />,
+    colors: 'border-gray-200 bg-gray-50',
+    icon: <Github className="w-8 h-8 text-gray-700" />,
   },
   azure_devops: {
     name: 'Azure DevOps',
-    colors: 'border-blue-500/50 bg-blue-500/5',
-    icon: <Workflow className="w-8 h-8 text-blue-400" />,
+    colors: 'border-blue-200 bg-blue-50',
+    icon: <Workflow className="w-8 h-8 text-blue-500" />,
   },
   gitlab: {
     name: 'GitLab',
-    colors: 'border-orange-500/50 bg-orange-500/5',
-    icon: <Workflow className="w-8 h-8 text-orange-400" />,
+    colors: 'border-orange-200 bg-orange-50',
+    icon: <Workflow className="w-8 h-8 text-orange-500" />,
   },
   jenkins: {
     name: 'Jenkins',
-    colors: 'border-red-500/50 bg-red-500/5',
-    icon: <Workflow className="w-8 h-8 text-red-400" />,
+    colors: 'border-red-200 bg-red-50',
+    icon: <Workflow className="w-8 h-8 text-red-500" />,
   },
 }
 
@@ -99,11 +100,12 @@ export default function CICDSettings() {
     if (!projectId) return
     setLoading(true)
     try {
-      const { data } = await api.get<CICDConnection[]>(
+      const { data } = await api.get<CICDConnection[] | { connections?: CICDConnection[] }>(
         '/api/v1/cicd/connections',
         { params: { project_id: projectId } }
       )
-      setConnections(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : (data?.connections ?? [])
+      setConnections(list)
     } catch {
       setConnections([])
       toast.error('Failed to load CI/CD connections')
@@ -316,17 +318,17 @@ export default function CICDSettings() {
 
   if (!projectId) {
     return (
-      <div className="text-gray-400 text-sm">Select a project to manage CI/CD connections.</div>
+      <div className="text-gray-500 text-sm">Select a project to manage CI/CD connections.</div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-base font-semibold text-white">CI/CD Providers</h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <h3 className="text-base font-semibold text-gray-900">CI/CD Providers</h3>
+            <p className="text-sm text-gray-500 mt-1">
               Connect GitHub, Azure DevOps, GitLab, or Jenkins to track deployments and pipelines.
             </p>
           </div>
@@ -355,17 +357,17 @@ export default function CICDSettings() {
                   <div className="flex items-start gap-4">
                     <div className="text-gray-400 flex-shrink-0">{cfg.icon}</div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-semibold text-white">{cfg.name}</h4>
+                      <h4 className="font-semibold text-gray-900">{cfg.name}</h4>
                       <div className="mt-2 flex items-center gap-2">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
                             isConnected
                               ? primaryConn?.status === 'connected'
-                                ? 'bg-green-500/20 text-green-400'
+                                ? 'bg-green-100 text-green-700'
                                 : primaryConn?.status === 'error'
-                                ? 'bg-red-500/20 text-red-400'
-                                : 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-gray-600/50 text-gray-400'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-yellow-100 text-yellow-700'
+                              : 'bg-gray-100 text-gray-500'
                           }`}
                         >
                           {isConnected
@@ -386,13 +388,13 @@ export default function CICDSettings() {
                         <div className="mt-2 flex items-center gap-2">
                           <div className="flex-1 min-w-0 overflow-hidden">
                             <p className="text-xs text-gray-500 truncate">Webhook:</p>
-                            <p className="text-xs text-gray-400 font-mono truncate">
+                            <p className="text-xs text-gray-600 font-mono truncate">
                               {primaryConn.webhook_url}
                             </p>
                           </div>
                           <button
                             onClick={() => copyWebhook(primaryConn.webhook_url!)}
-                            className="flex-shrink-0 p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-400"
+                            className="flex-shrink-0 p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-500"
                           >
                             {copiedWebhook === primaryConn.webhook_url ? (
                               <Check className="w-4 h-4 text-green-400" />
@@ -403,7 +405,7 @@ export default function CICDSettings() {
                         </div>
                       )}
                       {primaryConn?.status_message && (
-                        <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                        <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
                           {primaryConn.status_message}
                         </p>
@@ -413,7 +415,7 @@ export default function CICDSettings() {
                           <>
                             <button
                               onClick={() => openConnectModal(provider, primaryConn)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                               Edit
@@ -421,7 +423,7 @@ export default function CICDSettings() {
                             <button
                               onClick={() => handleDisconnect(primaryConn)}
                               disabled={disconnecting === primaryConn.id}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                             >
                               {disconnecting === primaryConn.id ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -453,22 +455,22 @@ export default function CICDSettings() {
 
       {/* Connect/Edit Modal */}
       {modalOpen && modalProvider && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal onClose={() => { setModalOpen(false); setModalProvider(null) }}>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className="text-lg font-semibold text-gray-900">
                   {editingId ? 'Edit' : 'Connect'} {PROVIDER_CONFIG[modalProvider].name}
                 </h3>
                 <button
                   onClick={closeModal}
-                  className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700"
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Connection name
               </label>
               <input
@@ -476,13 +478,13 @@ export default function CICDSettings() {
                 value={connectionName}
                 onChange={(e) => setConnectionName(e.target.value)}
                 placeholder="e.g. Production Pipeline"
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
               />
 
               {modalProvider === 'github' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Personal Access Token *
                     </label>
                     <input
@@ -492,11 +494,11 @@ export default function CICDSettings() {
                         setGithubForm((f) => ({ ...f, personal_access_token: e.target.value }))
                       }
                       placeholder="ghp_..."
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Organization (optional)
                     </label>
                     <input
@@ -506,7 +508,7 @@ export default function CICDSettings() {
                         setGithubForm((f) => ({ ...f, organization: e.target.value }))
                       }
                       placeholder="my-org"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -515,7 +517,7 @@ export default function CICDSettings() {
               {modalProvider === 'azure_devops' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Organization URL *
                     </label>
                     <input
@@ -525,11 +527,11 @@ export default function CICDSettings() {
                         setAzureForm((f) => ({ ...f, organization_url: e.target.value }))
                       }
                       placeholder="https://dev.azure.com/myorg"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Personal Access Token *
                     </label>
                     <input
@@ -539,11 +541,11 @@ export default function CICDSettings() {
                         setAzureForm((f) => ({ ...f, personal_access_token: e.target.value }))
                       }
                       placeholder="••••••••••••••••"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Project *
                     </label>
                     <input
@@ -553,7 +555,7 @@ export default function CICDSettings() {
                         setAzureForm((f) => ({ ...f, project: e.target.value }))
                       }
                       placeholder="MyProject"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -562,7 +564,7 @@ export default function CICDSettings() {
               {modalProvider === 'gitlab' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       GitLab URL *
                     </label>
                     <input
@@ -572,11 +574,11 @@ export default function CICDSettings() {
                         setGitlabForm((f) => ({ ...f, gitlab_url: e.target.value }))
                       }
                       placeholder="https://gitlab.com"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Personal Access Token *
                     </label>
                     <input
@@ -586,11 +588,11 @@ export default function CICDSettings() {
                         setGitlabForm((f) => ({ ...f, personal_access_token: e.target.value }))
                       }
                       placeholder="glpat-..."
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Project ID (optional)
                     </label>
                     <input
@@ -600,7 +602,7 @@ export default function CICDSettings() {
                         setGitlabForm((f) => ({ ...f, project_id: e.target.value }))
                       }
                       placeholder="12345"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -609,7 +611,7 @@ export default function CICDSettings() {
               {modalProvider === 'jenkins' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Jenkins URL *
                     </label>
                     <input
@@ -619,11 +621,11 @@ export default function CICDSettings() {
                         setJenkinsForm((f) => ({ ...f, jenkins_url: e.target.value }))
                       }
                       placeholder="https://jenkins.example.com"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Username *
                     </label>
                     <input
@@ -633,11 +635,11 @@ export default function CICDSettings() {
                         setJenkinsForm((f) => ({ ...f, username: e.target.value }))
                       }
                       placeholder="admin"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       API Token *
                     </label>
                     <input
@@ -647,7 +649,7 @@ export default function CICDSettings() {
                         setJenkinsForm((f) => ({ ...f, api_token: e.target.value }))
                       }
                       placeholder="••••••••••••••••"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -656,7 +658,7 @@ export default function CICDSettings() {
               {testResult && (
                 <div
                   className={`mt-4 flex items-center gap-2 p-3 rounded-lg ${
-                    testResult.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                    testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                   }`}
                 >
                   {testResult.success ? (
@@ -671,14 +673,14 @@ export default function CICDSettings() {
               <div className="mt-6 flex items-center justify-end gap-2">
                 <button
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 rounded-lg"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleTest}
                   disabled={testing || !hasValidCredentials()}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
                 >
                   {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
                   Test Connection
@@ -694,7 +696,7 @@ export default function CICDSettings() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

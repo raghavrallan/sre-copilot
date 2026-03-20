@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 from shared.utils.database import setup_django
 setup_django()
 
-from app.api import ai, analytics, anomaly, correlation
+from app.api import ai, analytics, anomaly, correlation, dashboard_analysis
 from app.services.redis_publisher import redis_publisher
 
 # Initialize FastAPI app
@@ -27,6 +27,7 @@ app.include_router(ai.router, tags=["AI"])
 app.include_router(analytics.router, tags=["Analytics"])
 app.include_router(anomaly.router, prefix="/anomaly", tags=["Anomaly Detection"])
 app.include_router(correlation.router, prefix="/correlation", tags=["Incident Correlation"])
+app.include_router(dashboard_analysis.router, tags=["Dashboard Analysis"])
 
 # Prometheus instrumentation for platform health monitoring
 try:

@@ -3,6 +3,7 @@ import { Key, Copy, Check, Plus, AlertTriangle } from 'lucide-react'
 import { useAuthStore } from '../../lib/stores/auth-store'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
+import Modal from '../Modal'
 
 interface ApiKey {
   id: string
@@ -250,8 +251,8 @@ export default function ApiKeysSettings() {
 
       {/* Create Key Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+        <Modal onClose={closeModal}>
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4 p-6 border border-gray-200">
             {!newKeyResult ? (
               <>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Generate New Key</h3>
@@ -310,7 +311,7 @@ export default function ApiKeysSettings() {
               </>
             )}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

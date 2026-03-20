@@ -176,10 +176,13 @@ class MonitoringIntegration(models.Model):
         f = Fernet(key)
         return f.encrypt(value.encode())
 
-    def decrypt_field(self, encrypted_value: bytes) -> str:
+    def decrypt_field(self, encrypted_value) -> str:
         """Decrypt a sensitive field value"""
         if not encrypted_value:
             return None
+
+        if isinstance(encrypted_value, memoryview):
+            encrypted_value = bytes(encrypted_value)
 
         key = self.get_encryption_key()
         f = Fernet(key)

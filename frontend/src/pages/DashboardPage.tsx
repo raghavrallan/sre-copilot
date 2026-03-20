@@ -7,6 +7,7 @@ import WebVitalsCard from '../components/dashboard/WebVitalsCard'
 import SLOStatusCard from '../components/dashboard/SLOStatusCard'
 import RecentDeployments from '../components/dashboard/RecentDeployments'
 import RecentIncidents from '../components/dashboard/RecentIncidents'
+import GrafanaStatusCard from '../components/dashboard/GrafanaStatusCard'
 
 export default function DashboardPage() {
   const { isConnected } = useWebSocket()
@@ -40,10 +41,11 @@ export default function DashboardPage() {
       </div>
 
       {/* Section 4: Observability Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <WebVitalsCard />
         <SLOStatusCard />
         <RecentDeployments />
+        <GrafanaStatusCard />
       </div>
 
       {/* Section 5: Recent Incidents Table */}

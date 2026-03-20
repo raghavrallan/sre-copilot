@@ -364,6 +364,94 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
 
 
+class UpdateProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+
+
+@router.patch("/profile")
+async def update_profile(
+    request: UpdateProfileRequest,
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Cookie(None),
+):
+    """Update current user's profile"""
+    token = get_token_from_request(authorization, access_token)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        user = await User.objects.select_related('tenant').aget(id=payload["sub"])
+    except User.DoesNotExist:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if request.full_name is not None:
+        user.full_name = request.full_name.strip()
+
+    await user.asave()
+
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+        "tenant_id": str(user.tenant.id),
+        "tenant_name": user.tenant.name,
+    }
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Cookie(None),
+):
+    """Change current user's password"""
+    token = get_token_from_request(authorization, access_token)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        user = await User.objects.aget(id=payload["sub"])
+    except User.DoesNotExist:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not verify_password(request.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    user.hashed_password = get_password_hash(request.new_password)
+    await user.asave()
+
+    return {"message": "Password changed successfully"}
+
+
 @router.post("/refresh")
 async def refresh_token(
     response: Response,
