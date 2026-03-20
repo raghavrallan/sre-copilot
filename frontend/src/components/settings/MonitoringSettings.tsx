@@ -16,7 +16,8 @@ const INTEGRATION_INFO: Record<IntegrationType, { name: string; color: string; b
 };
 
 export default function MonitoringSettings() {
-  const { user, currentProject } = useAuthStore();
+  const { currentProject } = useAuthStore();
+  const projectId = currentProject?.id;
   const [integrations, setIntegrations] = useState<MonitoringIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,14 +27,14 @@ export default function MonitoringSettings() {
 
   useEffect(() => {
     loadIntegrations();
-  }, [user]);
+  }, [projectId]);
 
   const loadIntegrations = async () => {
-    if (!user?.current_project_id) return;
+    if (!projectId) return;
     try {
       setLoading(true);
       setError(null);
-      const data = await listMonitoringIntegrations(user.current_project_id);
+      const data = await listMonitoringIntegrations(projectId);
       setIntegrations(data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load integrations');

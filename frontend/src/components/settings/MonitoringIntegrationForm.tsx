@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Modal from '../Modal';
 import { useAuthStore } from '../../lib/stores/auth-store';
 import {
   MonitoringIntegration,
@@ -138,8 +139,8 @@ export default function MonitoringIntegrationForm({ integration, defaultType, on
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-      <div className="bg-white bg-white rounded-lg max-w-2xl w-full mx-4 my-8">
+    <Modal onClose={onClose}>
+      <div className="bg-white rounded-lg max-w-2xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">
@@ -428,6 +429,6 @@ export default function MonitoringIntegrationForm({ integration, defaultType, on
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

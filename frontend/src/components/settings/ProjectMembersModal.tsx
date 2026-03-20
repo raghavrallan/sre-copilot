@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Modal from '../Modal';
 import {
   Project,
   ProjectMember,
@@ -119,7 +120,7 @@ export default function ProjectMembersModal({ project, onClose }: ProjectMembers
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <Modal onClose={onClose}>
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -353,7 +354,7 @@ export default function ProjectMembersModal({ project, onClose }: ProjectMembers
 
         {/* Remove Confirmation Modal */}
         {removingMemberId && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
             <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Remove Member</h3>
               <p className="text-gray-600 mb-4">
@@ -378,6 +379,6 @@ export default function ProjectMembersModal({ project, onClose }: ProjectMembers
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

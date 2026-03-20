@@ -28,6 +28,8 @@ import ErrorsPage from './pages/ErrorsPage'
 import ErrorGroupDetailPage from './pages/ErrorGroupDetailPage'
 import TracingPage from './pages/TracingPage'
 import TraceDetailPage from './pages/TraceDetailPage'
+import GrafanaDashboardsPage from './pages/GrafanaDashboardsPage'
+import GrafanaDashboardDetailPage from './pages/GrafanaDashboardDetailPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -100,6 +102,8 @@ function App() {
           <Route path="slos" element={<SLOsPage />} />
           <Route path="dashboards" element={<DashboardsPage />} />
           <Route path="dashboards/new" element={<DashboardEditorPage />} />
+          <Route path="dashboards/grafana" element={<GrafanaDashboardsPage />} />
+          <Route path="dashboards/grafana/:uid" element={<GrafanaDashboardDetailPage />} />
           <Route path="dashboards/:id" element={<DashboardEditorPage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="synthetics" element={<SyntheticsPage />} />

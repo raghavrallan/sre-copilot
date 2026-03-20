@@ -19,7 +19,7 @@ from shared.utils.database import setup_django
 
 setup_django()
 
-from app.api import health, proxy, observability_proxy, ingest_proxy, settings_api
+from app.api import health, proxy, observability_proxy, ingest_proxy, settings_api, grafana_proxy
 from app.core.config import settings
 from app.middleware.encryption_middleware import EncryptionMiddleware, RateLimitMiddleware
 from shared.utils.responses import install_validation_handler
@@ -79,6 +79,7 @@ app.include_router(proxy.router, prefix="/api/v1", tags=["API"])
 app.include_router(observability_proxy.router, prefix="/api/v1", tags=["Observability"])
 app.include_router(ingest_proxy.router, prefix="/api/v1", tags=["Ingest"])
 app.include_router(settings_api.router, prefix="/api/v1", tags=["Settings"])
+app.include_router(grafana_proxy.router, prefix="/api/v1", tags=["Grafana"])
 
 # Install centralized 422->400 validation error handler
 install_validation_handler(app)

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Modal from '../Modal'
 import {
   Mail,
   MessageSquare,
@@ -35,28 +36,28 @@ const CHANNEL_CONFIG: Record<
 > = {
   notification_email: {
     name: 'Email SMTP',
-    colors: 'border-gray-500/50 bg-gray-500/5',
-    icon: <Mail className="w-8 h-8 text-gray-300" />,
+    colors: 'border-gray-200 bg-gray-50',
+    icon: <Mail className="w-8 h-8 text-gray-500" />,
   },
   notification_slack: {
     name: 'Slack',
-    colors: 'border-purple-500/50 bg-purple-500/5',
-    icon: <MessageSquare className="w-8 h-8 text-purple-400" />,
+    colors: 'border-purple-200 bg-purple-50',
+    icon: <MessageSquare className="w-8 h-8 text-purple-500" />,
   },
   notification_pagerduty: {
     name: 'PagerDuty',
-    colors: 'border-red-500/50 bg-red-500/5',
-    icon: <Phone className="w-8 h-8 text-red-400" />,
+    colors: 'border-red-200 bg-red-50',
+    icon: <Phone className="w-8 h-8 text-red-500" />,
   },
   notification_teams: {
     name: 'Microsoft Teams',
-    colors: 'border-blue-500/50 bg-blue-500/5',
-    icon: <Bell className="w-8 h-8 text-blue-400" />,
+    colors: 'border-blue-200 bg-blue-50',
+    icon: <Bell className="w-8 h-8 text-blue-500" />,
   },
   notification_webhook: {
     name: 'Webhook',
-    colors: 'border-cyan-500/50 bg-cyan-500/5',
-    icon: <Webhook className="w-8 h-8 text-cyan-400" />,
+    colors: 'border-cyan-200 bg-cyan-50',
+    icon: <Webhook className="w-8 h-8 text-cyan-500" />,
   },
 }
 
@@ -104,12 +105,12 @@ export default function NotificationSettings() {
     if (!projectId) return
     setLoading(true)
     try {
-      const { data } = await api.get<{ connections?: NotificationConnection[] }>(
+      const { data } = await api.get<NotificationConnection[] | { connections?: NotificationConnection[] }>(
         '/api/v1/settings/connections',
-        { params: { project_id: projectId, category_prefix: 'notification_' } }
+        { params: { category_prefix: 'notification_' } }
       )
-      const list = data?.connections ?? []
-      setConnections(Array.isArray(list) ? list : [])
+      const list = Array.isArray(data) ? data : (data?.connections ?? [])
+      setConnections(list)
     } catch {
       setConnections([])
       toast.error('Failed to load notification channels')
@@ -342,17 +343,17 @@ export default function NotificationSettings() {
 
   if (!projectId) {
     return (
-      <div className="text-gray-400 text-sm">Select a project to manage notification channels.</div>
+      <div className="text-gray-500 text-sm">Select a project to manage notification channels.</div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-base font-semibold text-white">Notification Channels</h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <h3 className="text-base font-semibold text-gray-900">Notification Channels</h3>
+            <p className="text-sm text-gray-500 mt-1">
               Configure Email, Slack, PagerDuty, Teams, or Webhooks for alert delivery.
             </p>
           </div>
@@ -385,13 +386,13 @@ export default function NotificationSettings() {
                   <div className="flex items-start gap-4">
                     <div className="text-gray-400 flex-shrink-0">{cfg.icon}</div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-semibold text-white">{cfg.name}</h4>
+                      <h4 className="font-semibold text-gray-900">{cfg.name}</h4>
                       <div className="mt-2 flex items-center gap-2">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
                             isConfigured
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-gray-600/50 text-gray-400'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-500'
                           }`}
                         >
                           {isConfigured ? 'Connected' : 'Not configured'}
@@ -400,7 +401,7 @@ export default function NotificationSettings() {
                       <div className="mt-4">
                         <button
                           onClick={() => openConfigureModal(channel, conn ?? undefined)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                         >
                           <Settings className="w-3.5 h-3.5" />
                           {isConfigured ? 'Edit' : 'Configure'}
@@ -417,16 +418,16 @@ export default function NotificationSettings() {
 
       {/* Configure Modal */}
       {modalOpen && modalChannel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal onClose={() => { setModalOpen(false); setModalChannel(null) }}>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className="text-lg font-semibold text-gray-900">
                   Configure {CHANNEL_CONFIG[modalChannel].name}
                 </h3>
                 <button
                   onClick={closeModal}
-                  className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700"
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -435,7 +436,7 @@ export default function NotificationSettings() {
               {modalChannel === 'notification_email' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       SMTP Host *
                     </label>
                     <input
@@ -445,11 +446,11 @@ export default function NotificationSettings() {
                         setEmailForm((f) => ({ ...f, smtp_host: e.target.value }))
                       }
                       placeholder="smtp.example.com"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Port *
                     </label>
                     <input
@@ -459,11 +460,11 @@ export default function NotificationSettings() {
                         setEmailForm((f) => ({ ...f, smtp_port: e.target.value }))
                       }
                       placeholder="587"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Username *
                     </label>
                     <input
@@ -473,11 +474,11 @@ export default function NotificationSettings() {
                         setEmailForm((f) => ({ ...f, username: e.target.value }))
                       }
                       placeholder="user@example.com"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Password
                     </label>
                     <input
@@ -487,11 +488,11 @@ export default function NotificationSettings() {
                         setEmailForm((f) => ({ ...f, password: e.target.value }))
                       }
                       placeholder={editingId ? 'Leave blank to keep' : '••••••••'}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       From Address *
                     </label>
                     <input
@@ -501,7 +502,7 @@ export default function NotificationSettings() {
                         setEmailForm((f) => ({ ...f, from_address: e.target.value }))
                       }
                       placeholder="alerts@example.com"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div className="flex items-center gap-2">
@@ -512,9 +513,9 @@ export default function NotificationSettings() {
                       onChange={(e) =>
                         setEmailForm((f) => ({ ...f, use_tls: e.target.checked }))
                       }
-                      className="rounded border-gray-600 bg-gray-900 text-blue-600 focus:ring-blue-500"
+                      className="rounded border-gray-300 bg-white text-blue-600 focus:ring-blue-500"
                     />
-                    <label htmlFor="use_tls" className="text-sm text-gray-300">
+                    <label htmlFor="use_tls" className="text-sm text-gray-700">
                       Use TLS
                     </label>
                   </div>
@@ -524,7 +525,7 @@ export default function NotificationSettings() {
               {modalChannel === 'notification_slack' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Webhook URL *
                     </label>
                     <input
@@ -534,11 +535,11 @@ export default function NotificationSettings() {
                         setSlackForm((f) => ({ ...f, webhook_url: e.target.value }))
                       }
                       placeholder="https://hooks.slack.com/services/..."
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Channel
                     </label>
                     <input
@@ -548,7 +549,7 @@ export default function NotificationSettings() {
                         setSlackForm((f) => ({ ...f, channel: e.target.value }))
                       }
                       placeholder="#alerts"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -557,7 +558,7 @@ export default function NotificationSettings() {
               {modalChannel === 'notification_pagerduty' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Integration Key *
                     </label>
                     <input
@@ -567,11 +568,11 @@ export default function NotificationSettings() {
                         setPagerdutyForm((f) => ({ ...f, integration_key: e.target.value }))
                       }
                       placeholder="••••••••••••••••"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Service ID
                     </label>
                     <input
@@ -581,7 +582,7 @@ export default function NotificationSettings() {
                         setPagerdutyForm((f) => ({ ...f, service_id: e.target.value }))
                       }
                       placeholder="PXXXXXX"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -590,7 +591,7 @@ export default function NotificationSettings() {
               {modalChannel === 'notification_teams' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Webhook URL *
                     </label>
                     <input
@@ -600,7 +601,7 @@ export default function NotificationSettings() {
                         setTeamsForm((f) => ({ ...f, webhook_url: e.target.value }))
                       }
                       placeholder="https://outlook.office.com/webhook/..."
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -609,7 +610,7 @@ export default function NotificationSettings() {
               {modalChannel === 'notification_webhook' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       URL *
                     </label>
                     <input
@@ -619,11 +620,11 @@ export default function NotificationSettings() {
                         setWebhookForm((f) => ({ ...f, url: e.target.value }))
                       }
                       placeholder="https://api.example.com/webhook"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Method
                     </label>
                     <select
@@ -634,14 +635,14 @@ export default function NotificationSettings() {
                           method: e.target.value as 'POST' | 'PUT',
                         }))
                       }
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="POST">POST</option>
                       <option value="PUT">PUT</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Headers (JSON)
                     </label>
                     <textarea
@@ -651,11 +652,11 @@ export default function NotificationSettings() {
                       }
                       placeholder='{"Authorization": "Bearer token"}'
                       rows={3}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Secret
                     </label>
                     <input
@@ -665,7 +666,7 @@ export default function NotificationSettings() {
                         setWebhookForm((f) => ({ ...f, secret: e.target.value }))
                       }
                       placeholder="Optional signing secret"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -674,7 +675,7 @@ export default function NotificationSettings() {
               {testResult && (
                 <div
                   className={`mt-4 flex items-center gap-2 p-3 rounded-lg ${
-                    testResult.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                    testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                   }`}
                 >
                   {testResult.success ? (
@@ -692,7 +693,7 @@ export default function NotificationSettings() {
                     <button
                       onClick={handleDelete}
                       disabled={deleting === editingId}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
                     >
                       {deleting === editingId ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -706,14 +707,14 @@ export default function NotificationSettings() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={closeModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 rounded-lg"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleTest}
                     disabled={testing || !hasValidConfig()}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
                   >
                     {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
                     Test
@@ -730,7 +731,7 @@ export default function NotificationSettings() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

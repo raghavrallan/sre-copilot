@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Modal from '../Modal'
 import {
   Cloud,
   Loader2,
@@ -41,18 +42,18 @@ const PROVIDER_CONFIG: Record<
 > = {
   azure: {
     name: 'Azure',
-    colors: 'border-blue-500/50 bg-blue-500/5',
-    icon: <Cloud className="w-8 h-8 text-blue-400" />,
+    colors: 'border-blue-200 bg-blue-50',
+    icon: <Cloud className="w-8 h-8 text-blue-500" />,
   },
   aws: {
     name: 'AWS',
-    colors: 'border-orange-500/50 bg-orange-500/5',
-    icon: <Cloud className="w-8 h-8 text-orange-400" />,
+    colors: 'border-orange-200 bg-orange-50',
+    icon: <Cloud className="w-8 h-8 text-orange-500" />,
   },
   gcp: {
     name: 'GCP',
-    colors: 'border-green-500/30 border-red-500/30 border-yellow-500/30 border-blue-500/30 bg-gradient-to-br from-green-500/5 via-blue-500/5 to-yellow-500/5',
-    icon: <Cloud className="w-8 h-8 text-green-400" />,
+    colors: 'border-green-200 bg-green-50',
+    icon: <Cloud className="w-8 h-8 text-green-500" />,
   },
 }
 
@@ -124,10 +125,11 @@ export default function CloudProviderSettings() {
     if (!projectId) return
     setLoading(true)
     try {
-      const { data } = await api.get<ConnectionsResponse>('/api/v1/connections', {
+      const { data } = await api.get<ConnectionsResponse | CloudConnection[]>('/api/v1/connections', {
         params: { project_id: projectId },
       })
-      setConnections(data?.connections ?? [])
+      const list = Array.isArray(data) ? data : (data?.connections ?? [])
+      setConnections(list)
     } catch {
       setConnections([])
       toast.error('Failed to load cloud connections')
@@ -332,17 +334,17 @@ export default function CloudProviderSettings() {
 
   if (!projectId) {
     return (
-      <div className="text-gray-400 text-sm">Select a project to manage cloud connections.</div>
+      <div className="text-gray-500 text-sm">Select a project to manage cloud connections.</div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-base font-semibold text-white">Cloud Providers</h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <h3 className="text-base font-semibold text-gray-900">Cloud Providers</h3>
+            <p className="text-sm text-gray-500 mt-1">
               Connect Azure, AWS, or GCP to discover and monitor cloud resources.
             </p>
           </div>
@@ -366,19 +368,19 @@ export default function CloudProviderSettings() {
                   <div className="flex items-start gap-4">
                     <div className="text-gray-400 flex-shrink-0">{cfg.icon}</div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-semibold text-white">{cfg.name}</h4>
+                      <h4 className="font-semibold text-gray-900">{cfg.name}</h4>
                       <div className="mt-2 flex items-center gap-2">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
                             isConnected
                               ? conn?.status === 'connected'
-                                ? 'bg-green-500/20 text-green-400'
+                                ? 'bg-green-100 text-green-700'
                                 : conn?.status === 'syncing'
-                                ? 'bg-blue-500/20 text-blue-400'
+                                ? 'bg-blue-100 text-blue-700'
                                 : conn?.status === 'error'
-                                ? 'bg-red-500/20 text-red-400'
-                                : 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-gray-600/50 text-gray-400'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-yellow-100 text-yellow-700'
+                              : 'bg-gray-100 text-gray-500'
                           }`}
                         >
                           {isConnected
@@ -401,7 +403,7 @@ export default function CloudProviderSettings() {
                             {conn.resources_count} resources
                           </p>
                           {conn.status_message && (
-                            <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                               <AlertCircle className="w-3 h-3" />
                               {conn.status_message}
                             </p>
@@ -413,14 +415,14 @@ export default function CloudProviderSettings() {
                           <>
                             <button
                               onClick={() => fetchConnections()}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                               Sync Now
                             </button>
                             <button
                               onClick={() => openConnectModal(provider, conn)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                               Edit
@@ -428,7 +430,7 @@ export default function CloudProviderSettings() {
                             <button
                               onClick={() => handleDisconnect(conn)}
                               disabled={disconnecting === conn.id}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                             >
                               {disconnecting === conn.id ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -459,22 +461,22 @@ export default function CloudProviderSettings() {
 
       {/* Connect/Edit Modal */}
       {modalOpen && modalProvider && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <Modal onClose={() => { setModalOpen(false); setModalProvider(null) }}>
+          <div className="bg-white rounded-lg border border-gray-200 shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className="text-lg font-semibold text-gray-900">
                   {editingId ? 'Edit' : 'Connect'} {PROVIDER_CONFIG[modalProvider].name}
                 </h3>
                 <button
                   onClick={closeModal}
-                  className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700"
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Connection name
               </label>
               <input
@@ -482,13 +484,13 @@ export default function CloudProviderSettings() {
                 value={connectionName}
                 onChange={(e) => setConnectionName(e.target.value)}
                 placeholder="e.g. Production Account"
-                className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
               />
 
               {modalProvider === 'azure' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Tenant ID *
                     </label>
                     <input
@@ -496,11 +498,11 @@ export default function CloudProviderSettings() {
                       value={azureForm.tenant_id}
                       onChange={(e) => setAzureForm((f) => ({ ...f, tenant_id: e.target.value }))}
                       placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Client ID *
                     </label>
                     <input
@@ -508,11 +510,11 @@ export default function CloudProviderSettings() {
                       value={azureForm.client_id}
                       onChange={(e) => setAzureForm((f) => ({ ...f, client_id: e.target.value }))}
                       placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Client Secret *
                     </label>
                     <input
@@ -520,11 +522,11 @@ export default function CloudProviderSettings() {
                       value={azureForm.client_secret}
                       onChange={(e) => setAzureForm((f) => ({ ...f, client_secret: e.target.value }))}
                       placeholder="••••••••••••••••"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Subscription ID *
                     </label>
                     <input
@@ -532,7 +534,7 @@ export default function CloudProviderSettings() {
                       value={azureForm.subscription_id}
                       onChange={(e) => setAzureForm((f) => ({ ...f, subscription_id: e.target.value }))}
                       placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -541,7 +543,7 @@ export default function CloudProviderSettings() {
               {modalProvider === 'aws' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Access Key ID *
                     </label>
                     <input
@@ -549,11 +551,11 @@ export default function CloudProviderSettings() {
                       value={awsForm.access_key_id}
                       onChange={(e) => setAwsForm((f) => ({ ...f, access_key_id: e.target.value }))}
                       placeholder="AKIA..."
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Secret Access Key *
                     </label>
                     <input
@@ -561,17 +563,17 @@ export default function CloudProviderSettings() {
                       value={awsForm.secret_access_key}
                       onChange={(e) => setAwsForm((f) => ({ ...f, secret_access_key: e.target.value }))}
                       placeholder="••••••••••••••••"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Region
                     </label>
                     <select
                       value={awsForm.region}
                       onChange={(e) => setAwsForm((f) => ({ ...f, region: e.target.value }))}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     >
                       {AWS_REGIONS.map((r) => (
                         <option key={r} value={r}>
@@ -581,7 +583,7 @@ export default function CloudProviderSettings() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Assume Role ARN (optional)
                     </label>
                     <input
@@ -589,7 +591,7 @@ export default function CloudProviderSettings() {
                       value={awsForm.assume_role_arn}
                       onChange={(e) => setAwsForm((f) => ({ ...f, assume_role_arn: e.target.value }))}
                       placeholder="arn:aws:iam::123456789012:role/MyRole"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -598,7 +600,7 @@ export default function CloudProviderSettings() {
               {modalProvider === 'gcp' && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Service Account JSON *
                     </label>
                     <textarea
@@ -606,11 +608,11 @@ export default function CloudProviderSettings() {
                       onChange={(e) => setGcpForm((f) => ({ ...f, service_account_json: e.target.value }))}
                       placeholder='{"type":"service_account","project_id":"...",...}'
                       rows={6}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Project ID
                     </label>
                     <input
@@ -618,7 +620,7 @@ export default function CloudProviderSettings() {
                       value={gcpForm.project_id}
                       onChange={(e) => setGcpForm((f) => ({ ...f, project_id: e.target.value }))}
                       placeholder="my-gcp-project"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -627,7 +629,7 @@ export default function CloudProviderSettings() {
               {testResult && (
                 <div
                   className={`mt-4 flex items-center gap-2 p-3 rounded-lg ${
-                    testResult.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                    testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                   }`}
                 >
                   {testResult.success ? (
@@ -642,14 +644,14 @@ export default function CloudProviderSettings() {
               <div className="mt-6 flex items-center justify-end gap-2">
                 <button
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 rounded-lg"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleTest}
                   disabled={testing || !hasValidCredentials()}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
                 >
                   {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
                   Test Connection
@@ -665,7 +667,7 @@ export default function CloudProviderSettings() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

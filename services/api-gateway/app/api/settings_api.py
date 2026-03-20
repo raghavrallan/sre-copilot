@@ -108,15 +108,23 @@ def _require_auth(user: Optional[dict]) -> dict:
 # GET /settings/connections - List all connections for project (config values masked)
 # -----------------------------------------------------------------------------
 @router.get("/connections")
-async def list_connections(user=Depends(get_current_user_from_token)):
+async def list_connections(
+    category: Optional[str] = None,
+    category_prefix: Optional[str] = None,
+    user=Depends(get_current_user_from_token),
+):
     ctx = _require_auth(user)
     project_id = ctx["project_id"]
 
     @sync_to_async
     def _list():
+        qs = ConnectionConfig.objects.filter(project_id=project_id)
+        if category:
+            qs = qs.filter(category=category)
+        elif category_prefix:
+            qs = qs.filter(category__startswith=category_prefix)
         conns = list(
-            ConnectionConfig.objects.filter(project_id=project_id)
-            .order_by("category", "name")
+            qs.order_by("category", "name")
             .values(
                 "id",
                 "category",

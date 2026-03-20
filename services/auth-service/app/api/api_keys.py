@@ -36,7 +36,7 @@ async def get_current_user_project(authorization: Optional[str], access_token: O
 
     # Verify user has access to this project
     try:
-        membership = await ProjectMember.objects.select_related('project').aget(
+        membership = await ProjectMember.objects.select_related('project', 'project__tenant').aget(
             user_id=user_id,
             project_id=project_id
         )
@@ -113,7 +113,7 @@ async def create_api_key(
     # Create API key
     api_key_instance, raw_key = ProjectApiKey.create_key(
         project=membership.project,
-        tenant_id=tenant_id,
+        tenant=membership.project.tenant,
         name=request.name,
         scopes=scopes
     )

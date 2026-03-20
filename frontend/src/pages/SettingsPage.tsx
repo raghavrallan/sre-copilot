@@ -9,6 +9,7 @@ import {
   Bell,
   Shield,
   Link2,
+  FolderKanban,
 } from 'lucide-react'
 import GeneralSettings from '../components/settings/GeneralSettings'
 import MonitoringSettings from '../components/settings/MonitoringSettings'
@@ -18,9 +19,11 @@ import ConnectionSettings from '../components/settings/ConnectionSettings'
 import ApiKeysSettings from '../components/settings/ApiKeysSettings'
 import CloudProviderSettings from '../components/settings/CloudProviderSettings'
 import CICDSettings from '../components/settings/CICDSettings'
+import ProjectsSettings from '../components/settings/ProjectsSettings'
 
 type TabType =
   | 'general'
+  | 'projects'
   | 'api-keys'
   | 'cloud-providers'
   | 'cicd'
@@ -48,6 +51,7 @@ export default function SettingsPage() {
 
   const tabs: TabConfig[] = [
     { id: 'general', label: 'General', icon: <User className="w-4 h-4" /> },
+    { id: 'projects', label: 'Projects', icon: <FolderKanban className="w-4 h-4" /> },
     { id: 'api-keys', label: 'API Keys', icon: <Key className="w-4 h-4" /> },
     { id: 'cloud-providers', label: 'Cloud Providers', icon: <Cloud className="w-4 h-4" /> },
     { id: 'cicd', label: 'CI/CD', icon: <Workflow className="w-4 h-4" /> },
@@ -58,16 +62,16 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Settings</h1>
-          <p className="text-gray-400 text-sm mt-1">Manage your account and preferences</p>
+          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+          <p className="text-gray-500 text-sm mt-1">Manage your account and preferences</p>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-700 mb-6">
+        <div className="border-b border-gray-200 mb-6">
           <nav className="flex gap-6 flex-wrap">
             {tabs.map((tab) => (
               <button
@@ -75,8 +79,8 @@ export default function SettingsPage() {
                 onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-300'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {tab.icon}
@@ -89,6 +93,7 @@ export default function SettingsPage() {
         {/* Content */}
         <div>
           {activeTab === 'general' && <GeneralSettings />}
+          {activeTab === 'projects' && <ProjectsSettings />}
           {activeTab === 'api-keys' && <ApiKeysSettings />}
           {activeTab === 'cloud-providers' && <CloudProviderSettings />}
           {activeTab === 'cicd' && <CICDSettings />}
