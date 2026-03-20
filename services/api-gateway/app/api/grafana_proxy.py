@@ -3,6 +3,7 @@ Grafana Proxy API - fetches dashboards, panels, and metadata from
 the user's Grafana instance via the stored MonitoringIntegration credentials.
 """
 import logging
+import math
 import re
 from typing import Optional
 
@@ -400,7 +401,8 @@ async def query_panel_data(
                     ts_ms = int(float(ts_val[0]) * 1000)
                     try:
                         v = float(ts_val[1])
-                        datapoints.append({"t": ts_ms, "v": round(v, 4)})
+                        if math.isfinite(v):
+                            datapoints.append({"t": ts_ms, "v": round(v, 4)})
                     except (ValueError, TypeError):
                         pass
 
@@ -625,6 +627,8 @@ def _parse_ds_query_response(result: dict) -> list:
                 for ti, ts in enumerate(timestamps):
                     v = metric_vals[ti] if ti < len(metric_vals) else None
                     if v is not None:
+                        if isinstance(v, float) and not math.isfinite(v):
+                            continue
                         datapoints.append({"t": ts, "v": round(v, 4) if isinstance(v, float) else v})
 
                 if datapoints:
