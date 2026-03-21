@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Target, Plus, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
+import { Target, Plus, Loader2, AlertCircle, BarChart3, TrendingUp } from 'lucide-react'
 import api from '../services/api'
 
 interface SLOApi {
@@ -68,7 +69,13 @@ export default function SLOsPage() {
     target_percentage: 99.9,
     time_window_days: 30,
     description: '',
+    promql_expr: '',
   })
+  const [liveCompliance, setLiveCompliance] = useState<Record<string, any>>({})
+  const [grafanaDashboards, setGrafanaDashboards] = useState<any[]>([])
+  const [showPanelPicker, setShowPanelPicker] = useState(false)
+  const [selectedDashUid, setSelectedDashUid] = useState('')
+  const [dashPanels, setDashPanels] = useState<any[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -95,12 +102,56 @@ export default function SLOsPage() {
     return () => { cancelled = true }
   }, [])
 
+  // Fetch live compliance for SLOs that have promql_expr in description
+  useEffect(() => {
+    if (slos.length === 0) return
+    slos.forEach(async (slo) => {
+      const promqlMatch = slo.description?.match(/\[promql:(.+?)\]/)
+      if (!promqlMatch) return
+      try {
+        const resp = await api.post('/api/v1/grafana/slo-query', {
+          expr: promqlMatch[1],
+          target_percentage: slo.target,
+          time_window_days: parseInt(slo.timeWindow) || 30,
+        })
+        setLiveCompliance(prev => ({ ...prev, [slo.id]: resp.data }))
+      } catch { /* ignore */ }
+    })
+  }, [slos])
+
+  // Load Grafana dashboards for panel picker
+  useEffect(() => {
+    api.get('/api/v1/grafana/dashboards')
+      .then(resp => setGrafanaDashboards((resp.data.dashboards || []).filter((d: any) => d.uid)))
+      .catch(() => {})
+  }, [])
+
+  const loadDashboardPanels = async (uid: string) => {
+    setSelectedDashUid(uid)
+    try {
+      const resp = await api.get(`/api/v1/grafana/dashboards/${uid}`)
+      const panels = resp.data.panels || []
+      setDashPanels(panels.filter((p: any) => p.targets?.length > 0 && p.type !== 'row' && p.type !== 'text'))
+    } catch { setDashPanels([]) }
+  }
+
+  const pickPanelExpr = (panel: any) => {
+    const expr = panel.targets?.[0]?.expr || ''
+    setCreateForm(f => ({ ...f, promql_expr: expr }))
+    setShowPanelPicker(false)
+  }
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreateSubmitting(true)
     setCreateError(null)
     try {
-      const { data } = await api.post<SLOApi>('/api/v1/slos', createForm)
+      const payload = { ...createForm }
+      if (payload.promql_expr) {
+        payload.description = `${payload.description || ''} [promql:${payload.promql_expr}]`.trim()
+      }
+      const { promql_expr: _, ...apiPayload } = payload
+      const { data } = await api.post<SLOApi>('/api/v1/slos', apiPayload)
       setSlos((prev) => [mapApiToSLO(data), ...prev])
       setShowCreateModal(false)
       setCreateForm({
@@ -110,6 +161,7 @@ export default function SLOsPage() {
         target_percentage: 99.9,
         time_window_days: 30,
         description: '',
+        promql_expr: '',
       })
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -230,26 +282,67 @@ export default function SLOsPage() {
               {expandedId === slo.id && (
                 <div className="border-t border-gray-700 p-6 bg-gray-900/50">
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                      <div className="bg-gray-800 rounded p-3">
-                        <span className="text-gray-400 block">Target</span>
-                        <span className="text-white font-medium">{slo.target}%</span>
+                    {liveCompliance[slo.id] ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Target</span>
+                          <span className="text-white font-medium">{liveCompliance[slo.id].target}%</span>
+                        </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block flex items-center gap-1">Live Compliance <TrendingUp className="w-3 h-3 text-green-400" /></span>
+                          <span className={`font-medium ${liveCompliance[slo.id].compliance >= liveCompliance[slo.id].target ? 'text-green-400' : 'text-red-400'}`}>
+                            {liveCompliance[slo.id].compliance?.toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Error Budget</span>
+                          <span className={`font-medium ${liveCompliance[slo.id].error_budget_remaining > 20 ? 'text-white' : 'text-red-400'}`}>
+                            {liveCompliance[slo.id].error_budget_remaining?.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Burn Rate</span>
+                          <span className={`font-medium ${liveCompliance[slo.id].burn_rate > 1 ? 'text-red-400' : 'text-white'}`}>
+                            {liveCompliance[slo.id].burn_rate?.toFixed(2)}x
+                          </span>
+                        </div>
                       </div>
-                      <div className="bg-gray-800 rounded p-3">
-                        <span className="text-gray-400 block">Current Compliance</span>
-                        <span className="text-white font-medium">{slo.current}%</span>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Target</span>
+                          <span className="text-white font-medium">{slo.target}%</span>
+                        </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Current Compliance</span>
+                          <span className="text-white font-medium">{slo.current}%</span>
+                        </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Error Budget Remaining</span>
+                          <span className="text-white font-medium">{slo.errorBudgetRemaining}%</span>
+                        </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <span className="text-gray-400 block">Burn Rate</span>
+                          <span className="text-white font-medium">{slo.burnRate}x</span>
+                        </div>
                       </div>
+                    )}
+                    {liveCompliance[slo.id]?.series?.length > 0 && (
                       <div className="bg-gray-800 rounded p-3">
-                        <span className="text-gray-400 block">Error Budget Remaining</span>
-                        <span className="text-white font-medium">{slo.errorBudgetRemaining}%</span>
+                        <p className="text-xs text-gray-400 mb-2">SLI Trend ({slo.timeWindow})</p>
+                        <ResponsiveContainer width="100%" height={100}>
+                          <AreaChart data={liveCompliance[slo.id].series[0]?.data || []}>
+                            <XAxis dataKey="t" tickFormatter={(t: number) => new Date(t).toLocaleDateString()} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+                            <YAxis hide domain={['auto', 'auto']} />
+                            <Tooltip labelFormatter={(t: number) => new Date(t).toLocaleString()} formatter={(v: number) => [v?.toFixed(4), 'SLI']} contentStyle={{ fontSize: 11 }} />
+                            <defs><linearGradient id="sliGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} /><stop offset="95%" stopColor="#3B82F6" stopOpacity={0} /></linearGradient></defs>
+                            <Area type="monotone" dataKey="v" stroke="#3B82F6" fill="url(#sliGrad)" strokeWidth={1.5} dot={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       </div>
-                      <div className="bg-gray-800 rounded p-3">
-                        <span className="text-gray-400 block">Burn Rate</span>
-                        <span className="text-white font-medium">{slo.burnRate}x</span>
-                      </div>
-                    </div>
+                    )}
                     {slo.description && (
-                      <p className="text-sm text-gray-400">{slo.description}</p>
+                      <p className="text-sm text-gray-400">{slo.description?.replace(/\[promql:.+?\]/, '').trim()}</p>
                     )}
                   </div>
                 </div>
@@ -332,6 +425,52 @@ export default function SLOsPage() {
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
                   placeholder="Description"
                 />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
+                  PromQL Expression <span className="text-xs text-gray-500">(optional, for live compliance)</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    value={createForm.promql_expr}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, promql_expr: e.target.value }))}
+                    className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 font-mono text-xs"
+                    placeholder="e.g. rate(http_requests_total{status=~'2..'}[5m]) / rate(http_requests_total[5m])"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPanelPicker(!showPanelPicker)}
+                    className="px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs flex items-center gap-1"
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" /> Panel
+                  </button>
+                </div>
+                {showPanelPicker && (
+                  <div className="mt-2 border border-gray-600 rounded-lg p-3 bg-gray-750 space-y-2">
+                    <select
+                      value={selectedDashUid}
+                      onChange={(e) => loadDashboardPanels(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-xs"
+                    >
+                      <option value="">Select dashboard...</option>
+                      {grafanaDashboards.map(d => <option key={d.uid} value={d.uid}>{d.title}</option>)}
+                    </select>
+                    {dashPanels.length > 0 && (
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {dashPanels.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => pickPanelExpr(p)}
+                            className="w-full text-left px-2 py-1.5 text-xs text-gray-300 hover:bg-gray-600 rounded"
+                          >
+                            {p.title} <span className="text-gray-500">({p.type})</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               {createError && (
                 <p className="text-sm text-red-400">{createError}</p>

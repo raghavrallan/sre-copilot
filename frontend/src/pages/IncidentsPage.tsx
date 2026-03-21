@@ -8,6 +8,7 @@ import { IncidentFilters, FilterState } from '../components/common/IncidentFilte
 import { Pagination } from '../components/common/Pagination'
 import { ListSkeleton } from '../components/common/LoadingSkeleton'
 import { ExportButton } from '../components/common/ExportButton'
+import { BarChart3, Loader2, AlertTriangle, Zap } from 'lucide-react'
 
 export default function IncidentsPage() {
   const [loading, setLoading] = useState(true)
@@ -32,6 +33,14 @@ export default function IncidentsPage() {
 
   const [incidents, setIncidents] = useState<Incident[]>([])
   const { isConnected, connectionStatus } = useWebSocket()
+
+  // Grafana anomaly scan state
+  const [showGrafanaModal, setShowGrafanaModal] = useState(false)
+  const [grafanaDashboards, setGrafanaDashboards] = useState<any[]>([])
+  const [selectedDashboard, setSelectedDashboard] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [anomalies, setAnomalies] = useState<any[]>([])
+  const [creatingFromAnomaly, setCreatingFromAnomaly] = useState<string | null>(null)
 
   // Listen for real-time updates
   useWebSocketEvent<Incident>('incident.created', (newIncident) => {
@@ -115,6 +124,46 @@ export default function IncidentsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const openGrafanaModal = async () => {
+    setShowGrafanaModal(true)
+    setAnomalies([])
+    setSelectedDashboard('')
+    try {
+      const resp = await api.get('/api/v1/grafana/dashboards')
+      setGrafanaDashboards((resp.data.dashboards || []).filter((d: any) => d.uid))
+    } catch { setGrafanaDashboards([]) }
+  }
+
+  const scanForAnomalies = async () => {
+    if (!selectedDashboard) return
+    setScanning(true)
+    setAnomalies([])
+    try {
+      const resp = await api.post('/api/v1/grafana/detect-anomalies', { dashboard_uid: selectedDashboard, sensitivity: 2.0 })
+      setAnomalies(resp.data.anomalies || [])
+    } catch { /* ignore */ }
+    setScanning(false)
+  }
+
+  const createFromAnomaly = async (anomaly: any) => {
+    setCreatingFromAnomaly(anomaly.metric_name)
+    try {
+      await api.post('/api/v1/grafana/create-incident', {
+        metric_name: anomaly.metric_name,
+        expr: anomaly.expr,
+        panel_title: anomaly.panel_title,
+        dashboard_uid: selectedDashboard,
+        panel_id: anomaly.panel_id,
+        severity: anomaly.max_severity === 'critical' ? 'critical' : 'high',
+        latest_value: anomaly.latest_value,
+        expected_value: anomaly.expected_value,
+      })
+      setShowGrafanaModal(false)
+      fetchIncidents()
+    } catch (err) { console.error(err) }
+    setCreatingFromAnomaly(null)
+  }
+
   return (
     <div className="px-4 sm:px-0">
       <div className="mb-8 flex justify-between items-start">
@@ -141,6 +190,12 @@ export default function IncidentsPage() {
             data={incidents}
             filename={`incidents-${new Date().toISOString().split('T')[0]}`}
           />
+          <button
+            onClick={openGrafanaModal}
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 flex items-center gap-2"
+          >
+            <BarChart3 className="w-4 h-4" /> From Grafana
+          </button>
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -293,6 +348,77 @@ export default function IncidentsPage() {
           </>
         )}
       </div>
+
+      {/* Grafana Anomaly Scan Modal */}
+      {showGrafanaModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-orange-600" /> Create Incident from Grafana
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Dashboard</label>
+                <select
+                  value={selectedDashboard}
+                  onChange={(e) => setSelectedDashboard(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Choose a dashboard...</option>
+                  {grafanaDashboards.map(d => (
+                    <option key={d.uid} value={d.uid}>{d.title}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={scanForAnomalies}
+                disabled={!selectedDashboard || scanning}
+                className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium"
+              >
+                {scanning ? <><Loader2 className="w-4 h-4 animate-spin" /> Scanning metrics...</> : <><Zap className="w-4 h-4" /> Scan for Anomalies</>}
+              </button>
+
+              {anomalies.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">{anomalies.length} anomal{anomalies.length === 1 ? 'y' : 'ies'} detected:</p>
+                  {anomalies.map((a, i) => (
+                    <div key={i} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{a.panel_title || a.metric_name}</p>
+                          <p className="text-xs text-gray-500 truncate">{a.metric_name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${a.max_severity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                              {a.max_severity}
+                            </span>
+                            <span className="text-xs text-gray-400">{a.anomaly_count} anomalous points</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => createFromAnomaly(a)}
+                          disabled={creatingFromAnomaly === a.metric_name}
+                          className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50 shrink-0"
+                        >
+                          {creatingFromAnomaly === a.metric_name ? 'Creating...' : 'Create Incident'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!scanning && anomalies.length === 0 && selectedDashboard && (
+                <p className="text-sm text-gray-500 text-center py-2">No anomalies detected. Select a dashboard and scan.</p>
+              )}
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <button onClick={() => setShowGrafanaModal(false)} className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
