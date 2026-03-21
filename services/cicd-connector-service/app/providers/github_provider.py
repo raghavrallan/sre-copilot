@@ -53,6 +53,53 @@ async def list_repos(credentials: Dict[str, Any], org: str) -> Dict[str, Any]:
         return {"repos": [], "error": str(e)}
 
 
+async def list_user_repos(credentials: Dict[str, Any], limit: int = 100) -> Dict[str, Any]:
+    """List ALL repos the authenticated user has access to: owned, collaborator, and org member."""
+    def _sync():
+        g = _get_github_client(credentials)
+        user = g.get_user()
+        repos = list(user.get_repos(
+            affiliation="owner,collaborator,organization_member",
+            sort="updated",
+        )[:limit])
+        return {
+            "repos": [
+                {
+                    "name": r.name,
+                    "full_name": r.full_name,
+                    "private": r.private,
+                    "owner": r.owner.login if r.owner else "",
+                    "owner_type": r.owner.type if r.owner else "",
+                }
+                for r in repos
+            ]
+        }
+
+    try:
+        return await asyncio.to_thread(_sync)
+    except Exception as e:
+        return {"repos": [], "error": str(e)}
+
+
+async def list_user_orgs(credentials: Dict[str, Any]) -> Dict[str, Any]:
+    """List all organizations the authenticated user belongs to."""
+    def _sync():
+        g = _get_github_client(credentials)
+        user = g.get_user()
+        orgs = list(user.get_orgs())
+        return {
+            "orgs": [
+                {"login": o.login, "name": o.name or o.login, "avatar_url": o.avatar_url or ""}
+                for o in orgs
+            ]
+        }
+
+    try:
+        return await asyncio.to_thread(_sync)
+    except Exception as e:
+        return {"orgs": [], "error": str(e)}
+
+
 async def list_workflow_runs(
     credentials: Dict[str, Any],
     repo: str,

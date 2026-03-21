@@ -10,6 +10,7 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Request, HTTPException, Header
+from asgiref.sync import sync_to_async
 from django.utils import timezone
 
 from shared.models import CICDConnection, Project
@@ -35,9 +36,28 @@ def _verify_github_signature(payload: bytes, signature: Optional[str], secret: s
 def _verify_webhook_secret(request: Request, secret: str) -> bool:
     """Generic header-based secret: X-Webhook-Secret"""
     provided = request.headers.get("X-Webhook-Secret")
-    return bool(secret and provided and hmac.compare_digest(secret, provided))
+    if not secret or not provided:
+        return False
+    return hmac.compare_digest(secret, provided)
 
 
+@sync_to_async
+def _get_connection_by_id(connection_id: str) -> CICDConnection:
+    try:
+        return CICDConnection.objects.get(id=connection_id)
+    except CICDConnection.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+
+@sync_to_async
+def _get_project_by_id(project_id: str) -> Project:
+    try:
+        return Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+@sync_to_async
 def _create_deployment(
     project_id: str,
     tenant_id: str,
@@ -86,10 +106,7 @@ async def github_webhook(
     Receive GitHub webhook events: deployment, workflow_run, push.
     Validates X-Hub-Signature-256 against connection's webhook_secret.
     """
-    try:
-        conn = CICDConnection.objects.get(id=connection_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    conn = await _get_connection_by_id(connection_id)
     if not conn.is_active:
         raise HTTPException(status_code=400, detail="Connection is inactive")
 
@@ -112,7 +129,7 @@ async def github_webhook(
         dep = data.get("deployment", {})
         repo = data.get("repository", {})
         repo_name = repo.get("full_name", repo.get("name", "unknown"))
-        deployment_created = _create_deployment(
+        deployment_created = await _create_deployment(
             project_id=project_id,
             tenant_id=tenant_id,
             service=repo_name,
@@ -128,7 +145,7 @@ async def github_webhook(
         repo_name = repo.get("full_name", repo.get("name", "unknown"))
         conclusion = wf.get("conclusion", "unknown")
         status = "success" if conclusion == "success" else ("failed" if conclusion == "failure" else "in_progress")
-        deployment_created = _create_deployment(
+        deployment_created = await _create_deployment(
             project_id=project_id,
             tenant_id=tenant_id,
             service=repo_name,
@@ -144,7 +161,7 @@ async def github_webhook(
         repo_name = repo.get("full_name", repo.get("name", "unknown"))
         head = data.get("head_commit") or {}
         sha = (head.get("sha") or data.get("after") or "")[:40]
-        deployment_created = _create_deployment(
+        deployment_created = await _create_deployment(
             project_id=project_id,
             tenant_id=tenant_id,
             service=repo_name,
@@ -171,10 +188,7 @@ async def azure_devops_webhook(
     Receive Azure DevOps service hooks (build completed, release, etc.).
     Validates X-Webhook-Secret against connection's webhook_secret.
     """
-    try:
-        conn = CICDConnection.objects.get(id=connection_id)
-    except CICDConnection.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    conn = await _get_connection_by_id(connection_id)
     if not conn.is_active:
         raise HTTPException(status_code=400, detail="Connection is inactive")
 
@@ -200,7 +214,7 @@ async def azure_devops_webhook(
         definition = resource.get("definition", {})
         build_name = definition.get("name", "build")
         source_version = (resource.get("sourceVersion") or "")[:7]
-        deployment_created = _create_deployment(
+        deployment_created = await _create_deployment(
             project_id=project_id,
             tenant_id=tenant_id,
             service=build_name,
@@ -215,7 +229,7 @@ async def azure_devops_webhook(
         resource = data.get("resource", {})
         release_name = resource.get("name", "release")
         status = "success"
-        deployment_created = _create_deployment(
+        deployment_created = await _create_deployment(
             project_id=project_id,
             tenant_id=tenant_id,
             service=release_name,
@@ -242,24 +256,16 @@ async def generic_webhook(
     """
     Generic webhook for any CI/CD. Expects JSON body:
     { service, version, commit_sha?, description?, deployed_by? }
-    Validates X-Webhook-Secret - must match a stored secret for the project
-    or use a project-level webhook secret (future: from Project config).
-    For now, we accept requests if project exists; in production you'd validate secret.
     """
-    try:
-        project = Project.objects.get(id=project_id)
-    except Project.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = await _get_project_by_id(project_id)
 
-    # For generic webhook, optional secret - can be configured per-project later
-    # For now we accept if project exists; caller can add X-Webhook-Secret for validation
     body = await request.json()
     service = body.get("service") or body.get("service_name")
     version = body.get("version")
     if not service or not version:
         raise HTTPException(status_code=400, detail="service and version are required")
 
-    deployment_created = _create_deployment(
+    deployment_created = await _create_deployment(
         project_id=str(project.id),
         tenant_id=str(project.tenant_id),
         service=str(service),
