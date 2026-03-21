@@ -36,7 +36,7 @@ export default function RecentDeployments() {
           service: d.service_name || d.service || 'unknown',
           version: d.version || d.tag || d.commit_sha?.slice(0, 7) || 'N/A',
           status: d.status || 'success',
-          deployedAt: d.deployed_at || d.created_at || new Date().toISOString(),
+          deployedAt: d.timestamp || d.started_at || d.deployed_at || d.created_at || new Date().toISOString(),
         })))
       } catch {
         setDeployments([])

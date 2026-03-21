@@ -53,6 +53,25 @@ async def list_repos(credentials: Dict[str, Any], org: str) -> Dict[str, Any]:
         return {"repos": [], "error": str(e)}
 
 
+async def list_user_repos(credentials: Dict[str, Any], limit: int = 20) -> Dict[str, Any]:
+    """List repos for the authenticated user (no org required)."""
+    def _sync():
+        g = _get_github_client(credentials)
+        user = g.get_user()
+        repos = list(user.get_repos(sort="updated")[:limit])
+        return {
+            "repos": [
+                {"name": r.name, "full_name": r.full_name, "private": r.private}
+                for r in repos
+            ]
+        }
+
+    try:
+        return await asyncio.to_thread(_sync)
+    except Exception as e:
+        return {"repos": [], "error": str(e)}
+
+
 async def list_workflow_runs(
     credentials: Dict[str, Any],
     repo: str,

@@ -103,7 +103,7 @@ async def list_deployments(
             qs = qs.filter(service=service)
         deps = list(
             qs.order_by("-started_at")
-            .values("deployment_id", "service", "version", "commit_sha", "description", "deployed_by", "started_at")[:limit]
+            .values("deployment_id", "service", "version", "commit_sha", "description", "deployed_by", "started_at", "status", "source", "environment")[:limit]
         )
         for d in deps:
             ts = d.get("started_at")

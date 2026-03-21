@@ -1247,6 +1247,23 @@ async def list_cicd_runs(connection_id: str, request: Request, user=Depends(get_
         return response.json()
 
 
+@router.post("/cicd/connections/{connection_id}/sync")
+async def sync_cicd_connection(connection_id: str, request: Request, user=Depends(get_current_user_from_token)):
+    """Proxy to cicd-connector-service - sync connection (validate + fetch counts)"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    params = get_project_params(user)
+    async with httpx.AsyncClient(timeout=settings.SERVICE_TIMEOUT) as client:
+        response = await client.post(
+            f"{settings.CICD_CONNECTOR_URL}/connections/{connection_id}/sync",
+            params=params,
+            headers=get_internal_headers()
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=get_error_message(response, "Request failed"))
+        return response.json()
+
+
 # ---- CI/CD Webhooks (NO JWT auth - use webhook_secret) ----
 
 def _webhook_response(response: httpx.Response):

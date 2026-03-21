@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Copy,
   Workflow,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuthStore } from '../../lib/stores/auth-store'
 import api from '../../services/api'
@@ -30,6 +31,7 @@ interface CICDConnection {
   repos_count?: number
   pipelines_count?: number
   webhook_url?: string
+  last_sync_at?: string
   created_at: string
   updated_at: string
 }
@@ -60,6 +62,16 @@ const PROVIDER_CONFIG: Record<
   },
 }
 
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const resp = (err as { response?: { data?: { detail?: string; message?: string } } }).response
+    const detail = resp?.data?.detail || resp?.data?.message
+    if (typeof detail === 'string') return detail
+  }
+  if (err instanceof Error) return err.message
+  return fallback
+}
+
 export default function CICDSettings() {
   const { currentProject } = useAuthStore()
   const projectId = currentProject?.id
@@ -73,6 +85,7 @@ export default function CICDSettings() {
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState<string | null>(null)
   const [connectionName, setConnectionName] = useState('')
   const [copiedWebhook, setCopiedWebhook] = useState<string | null>(null)
 
@@ -165,24 +178,39 @@ export default function CICDSettings() {
     setTestResult(null)
   }
 
+  const getCredentialsPayload = (): Record<string, unknown> => {
+    if (modalProvider === 'github') {
+      return { pat: githubForm.personal_access_token }
+    }
+    if (modalProvider === 'azure_devops') {
+      return { pat: azureForm.personal_access_token }
+    }
+    if (modalProvider === 'gitlab') {
+      return { pat: gitlabForm.personal_access_token }
+    }
+    if (modalProvider === 'jenkins') {
+      return {
+        url: jenkinsForm.jenkins_url,
+        username: jenkinsForm.username,
+        token: jenkinsForm.api_token,
+      }
+    }
+    return {}
+  }
+
   const getConfigPayload = (): Record<string, unknown> => {
     if (modalProvider === 'github') {
-      return {
-        personal_access_token: githubForm.personal_access_token,
-        organization: githubForm.organization || undefined,
-      }
+      return { organization: githubForm.organization || undefined }
     }
     if (modalProvider === 'azure_devops') {
       return {
         organization_url: azureForm.organization_url,
-        personal_access_token: azureForm.personal_access_token,
         project: azureForm.project,
       }
     }
     if (modalProvider === 'gitlab') {
       return {
         gitlab_url: gitlabForm.gitlab_url,
-        personal_access_token: gitlabForm.personal_access_token,
         project_id: gitlabForm.project_id || undefined,
       }
     }
@@ -190,7 +218,6 @@ export default function CICDSettings() {
       return {
         jenkins_url: jenkinsForm.jenkins_url,
         username: jenkinsForm.username,
-        api_token: jenkinsForm.api_token,
       }
     }
     return {}
@@ -222,13 +249,13 @@ export default function CICDSettings() {
 
   const handleTest = async () => {
     if (!modalProvider || !projectId) return
-    const config = getConfigPayload()
+    const credentials = getCredentialsPayload()
     setTesting(true)
     setTestResult(null)
     try {
       const { data } = await api.post<{ success: boolean; message: string }>(
         '/api/v1/cicd/connections/test',
-        { provider: modalProvider, config },
+        { provider: modalProvider, credentials },
         { params: { project_id: projectId } }
       )
       setTestResult({
@@ -241,7 +268,7 @@ export default function CICDSettings() {
         toast.error(data?.message ?? 'Connection test failed')
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Connection test failed'
+      const msg = extractErrorMessage(err, 'Connection test failed')
       setTestResult({ success: false, message: msg })
       toast.error(msg)
     } finally {
@@ -251,13 +278,14 @@ export default function CICDSettings() {
 
   const handleSave = async () => {
     if (!modalProvider || !projectId) return
+    const credentials = getCredentialsPayload()
     const config = getConfigPayload()
     const hasCredentials = hasValidCredentials()
     setSaving(true)
     try {
       if (editingId) {
-        const payload: Record<string, unknown> = { name: connectionName }
-        if (hasCredentials) payload.config = config
+        const payload: Record<string, unknown> = { name: connectionName, config }
+        if (hasCredentials) payload.credentials = credentials
         await api.patch(`/api/v1/cicd/connections/${editingId}`, payload, {
           params: { project_id: projectId },
         })
@@ -268,6 +296,7 @@ export default function CICDSettings() {
           {
             provider: modalProvider,
             name: connectionName,
+            credentials,
             config,
           },
           { params: { project_id: projectId } }
@@ -277,8 +306,7 @@ export default function CICDSettings() {
       closeModal()
       fetchConnections()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to save connection'
-      toast.error(msg)
+      toast.error(extractErrorMessage(err, 'Failed to save connection'))
     } finally {
       setSaving(false)
     }
@@ -297,6 +325,26 @@ export default function CICDSettings() {
       toast.error('Failed to remove connection')
     } finally {
       setDisconnecting(null)
+    }
+  }
+
+  const handleSync = async (conn: CICDConnection) => {
+    if (!projectId) return
+    setSyncing(conn.id)
+    try {
+      await api.post(`/api/v1/cicd/connections/${conn.id}/sync`, {}, {
+        params: { project_id: projectId },
+      })
+      toast.success('Connection synced')
+      fetchConnections()
+    } catch (err: unknown) {
+      const msg =
+        (err && typeof err === 'object' && 'response' in err)
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Sync failed'
+          : 'Sync failed'
+      toast.error(typeof msg === 'string' ? msg : 'Sync failed')
+    } finally {
+      setSyncing(null)
     }
   }
 
@@ -381,7 +429,12 @@ export default function CICDSettings() {
                       </div>
                       {isConnected && conns.length > 0 && (
                         <p className="text-xs text-gray-500 mt-1">
-                          {count} repos/pipelines
+                          {count > 0 ? `${count} repos/pipelines` : 'No data synced yet'}
+                          {primaryConn?.last_sync_at && (
+                            <span className="ml-1">
+                              &middot; Synced {new Date(primaryConn.last_sync_at).toLocaleDateString()}
+                            </span>
+                          )}
                         </p>
                       )}
                       {primaryConn?.webhook_url && (
@@ -421,6 +474,18 @@ export default function CICDSettings() {
                               Edit
                             </button>
                             <button
+                              onClick={() => handleSync(primaryConn)}
+                              disabled={syncing === primaryConn.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              {syncing === primaryConn.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-3.5 h-3.5" />
+                              )}
+                              Sync
+                            </button>
+                            <button
                               onClick={() => handleDisconnect(primaryConn)}
                               disabled={disconnecting === primaryConn.id}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
@@ -455,7 +520,7 @@ export default function CICDSettings() {
 
       {/* Connect/Edit Modal */}
       {modalOpen && modalProvider && (
-        <Modal onClose={() => { setModalOpen(false); setModalProvider(null) }}>
+        <Modal onClose={closeModal}>
           <div className="bg-white rounded-lg border border-gray-200 shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
