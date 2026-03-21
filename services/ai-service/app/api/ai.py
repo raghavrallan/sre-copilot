@@ -650,3 +650,93 @@ async def ai_status(_auth: bool = Depends(verify_internal_auth)):
         "using_mock": USE_MOCK,
         "api_configured": not USE_MOCK
     }
+
+
+class GenerateIncidentFromAnomalyRequest(BaseModel):
+    metric_name: str
+    panel_title: str = ""
+    latest_value: Optional[float] = None
+    expected_value: Optional[float] = None
+    expr: str = ""
+    service_name: str = ""
+
+
+@router.post("/generate-incident-from-anomaly")
+async def generate_incident_from_anomaly(request: GenerateIncidentFromAnomalyRequest):
+    """Generate incident title, description, and severity from anomaly data using AI."""
+    deviation_info = ""
+    if request.latest_value is not None and request.expected_value is not None:
+        pct = abs(request.latest_value - request.expected_value) / max(abs(request.expected_value), 0.001) * 100
+        deviation_info = f"Value: {request.latest_value} (expected ~{request.expected_value}, {pct:.0f}% deviation)"
+
+    if USE_MOCK or not AZURE_OPENAI_API_KEY:
+        sev = "critical" if request.latest_value and request.expected_value and abs(request.latest_value - request.expected_value) / max(abs(request.expected_value), 0.001) > 1.0 else "high"
+        svc = request.service_name or _guess_service(request.metric_name, request.expr)
+        title = f"Anomaly detected: {request.panel_title or request.metric_name}"
+        desc = f"Automated anomaly detection flagged an issue.\n\nMetric: {request.metric_name}\n"
+        if request.panel_title:
+            desc += f"Panel: {request.panel_title}\n"
+        if deviation_info:
+            desc += f"{deviation_info}\n"
+        if request.expr:
+            desc += f"Query: {request.expr[:200]}\n"
+        return {"title": title, "description": desc, "severity": sev, "service_name": svc, "ai_powered": False}
+
+    try:
+        from openai import AsyncAzureOpenAI
+        client = AsyncAzureOpenAI(
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version=AZURE_OPENAI_API_VERSION,
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        )
+        prompt = f"""Generate an SRE incident from this anomaly. Return JSON with title, description, severity (critical/high/medium/low), and service_name.
+
+Metric: {request.metric_name}
+Panel: {request.panel_title}
+{deviation_info}
+Query: {request.expr[:200]}
+Service hint: {request.service_name}
+
+Return JSON: {{"title":"...","description":"...","severity":"high","service_name":"..."}}"""
+
+        response = await client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            messages=[
+                {"role": "system", "content": "SRE incident creator. Return valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            max_completion_tokens=500,
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            lines = content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            content = "\n".join(lines)
+        result = json.loads(content)
+        result["ai_powered"] = True
+        return result
+    except Exception as e:
+        logger.warning("AI incident generation failed: %s", e)
+        return generate_incident_from_anomaly.__wrapped__(request) if hasattr(generate_incident_from_anomaly, '__wrapped__') else {
+            "title": f"Anomaly: {request.panel_title or request.metric_name}",
+            "description": f"Anomaly detected in {request.metric_name}. {deviation_info}",
+            "severity": "high",
+            "service_name": request.service_name or "unknown",
+            "ai_powered": False,
+        }
+
+
+def _guess_service(metric_name: str, expr: str) -> str:
+    """Try to extract a service name from metric labels or expression."""
+    import re
+    for pattern in [r'service="([^"]+)"', r'job="([^"]+)"', r'instance="([^"]+)"']:
+        m = re.search(pattern, expr)
+        if m:
+            return m.group(1)
+    parts = metric_name.split(",")
+    if len(parts) > 1:
+        return parts[0].strip()
+    return "unknown"

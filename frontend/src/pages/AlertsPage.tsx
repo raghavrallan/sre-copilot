@@ -1,9 +1,25 @@
 import { useState, useEffect } from 'react'
-import { Bell, Plus, Mail, MessageSquare, Webhook, CheckCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Bell, Plus, Mail, MessageSquare, Webhook, CheckCircle, BarChart3, ExternalLink, Loader2, AlertTriangle, Zap } from 'lucide-react'
 import api from '../services/api'
 import { useAuthStore } from '../lib/stores/auth-store'
 
-type Tab = 'active' | 'conditions' | 'policies' | 'channels' | 'muting'
+type Tab = 'active' | 'grafana' | 'conditions' | 'policies' | 'channels' | 'muting'
+
+interface GrafanaRule {
+  uid: string
+  title: string
+  state: string
+  condition?: string
+  folder_uid?: string
+  rule_group?: string
+  for_duration?: string
+  labels: Record<string, string>
+  annotations: Record<string, string>
+  is_paused: boolean
+  dashboard_uid?: string
+  panel_id?: number
+}
 
 interface ActiveAlert {
   alert_id: string
@@ -67,9 +83,13 @@ export default function AlertsPage() {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
   const [mutingRules, setMutingRules] = useState<MutingRule[]>([])
+  const [grafanaRules, setGrafanaRules] = useState<GrafanaRule[]>([])
+  const [grafanaUrl, setGrafanaUrl] = useState('')
+  const [creatingIncidentFor, setCreatingIncidentFor] = useState<string | null>(null)
 
   const [loading, setLoading] = useState<Record<Tab, boolean>>({
     active: false,
+    grafana: false,
     conditions: false,
     policies: false,
     channels: false,
@@ -77,6 +97,7 @@ export default function AlertsPage() {
   })
   const [error, setError] = useState<Record<Tab, string | null>>({
     active: null,
+    grafana: null,
     conditions: null,
     policies: null,
     channels: null,
@@ -100,6 +121,41 @@ export default function AlertsPage() {
       })
     return () => { cancelled = true }
   }, [activeTab, currentProject?.id])
+
+  useEffect(() => {
+    if (activeTab !== 'grafana') return
+    let cancelled = false
+    setLoading((l) => ({ ...l, grafana: true }))
+    setError((e) => ({ ...e, grafana: null }))
+    api.get('/api/v1/grafana/alert-rules')
+      .then((res) => {
+        if (!cancelled) {
+          setGrafanaRules(res.data?.rules ?? [])
+          setGrafanaUrl(res.data?.grafana_url ?? '')
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError((e) => ({ ...e, grafana: err.response?.data?.detail ?? 'Failed to load Grafana alert rules' }))
+      })
+      .finally(() => { if (!cancelled) setLoading((l) => ({ ...l, grafana: false })) })
+    return () => { cancelled = true }
+  }, [activeTab])
+
+  const createIncidentFromAlert = async (rule: GrafanaRule) => {
+    setCreatingIncidentFor(rule.uid)
+    try {
+      await api.post('/api/v1/grafana/create-incident', {
+        metric_name: rule.title,
+        panel_title: rule.title,
+        dashboard_uid: rule.dashboard_uid || '',
+        panel_id: rule.panel_id,
+        severity: rule.state === 'firing' || rule.state === 'alerting' ? 'critical' : 'high',
+        service_name: rule.labels?.service || rule.labels?.job || '',
+      })
+      alert('Incident created successfully!')
+    } catch { alert('Failed to create incident') }
+    setCreatingIncidentFor(null)
+  }
 
   useEffect(() => {
     if (activeTab !== 'conditions' || !currentProject?.id) return
@@ -175,6 +231,7 @@ export default function AlertsPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'active', label: 'Active Alerts' },
+    { id: 'grafana', label: 'Grafana Rules' },
     { id: 'conditions', label: 'Conditions' },
     { id: 'policies', label: 'Policies' },
     { id: 'channels', label: 'Channels' },
@@ -308,6 +365,80 @@ export default function AlertsPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'grafana' && (
+        <>
+          {error.grafana && (
+            <div className="mb-4 px-4 py-3 bg-red-900/30 border border-red-700/50 rounded-lg text-red-300">{error.grafana}</div>
+          )}
+          {loading.grafana ? (
+            <div className="py-12 text-center text-gray-400 flex items-center justify-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Loading Grafana alert rules...</div>
+          ) : grafanaRules.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">
+              <BarChart3 className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+              <p className="font-medium">No Grafana alert rules found</p>
+              <p className="text-sm mt-1">Configure alert rules in your Grafana instance to see them here.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 mb-4 text-sm text-gray-400">
+                <span>{grafanaRules.length} rules</span>
+                <span>{grafanaRules.filter(r => ['alerting', 'firing', 'pending'].includes(r.state)).length} firing/pending</span>
+              </div>
+              {grafanaRules.map((rule) => {
+                const isFiring = ['alerting', 'firing', 'pending'].includes(rule.state)
+                return (
+                  <div key={rule.uid} className={`bg-gray-800 rounded-lg border p-4 ${isFiring ? 'border-red-500/50' : 'border-gray-700/50'}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${isFiring ? 'bg-red-500 animate-pulse' : rule.state === 'pending' ? 'bg-yellow-500' : rule.is_paused ? 'bg-gray-500' : 'bg-green-500'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-white truncate">{rule.title}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${isFiring ? 'bg-red-500/20 text-red-400' : rule.state === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                              {rule.state}
+                            </span>
+                            {rule.rule_group && <span className="text-xs text-gray-500">{rule.rule_group}</span>}
+                            {rule.for_duration && <span className="text-xs text-gray-500">for: {rule.for_duration}</span>}
+                            {Object.entries(rule.labels).slice(0, 3).map(([k, v]) => (
+                              <span key={k} className="text-xs px-1.5 py-0.5 bg-gray-700 text-gray-300 rounded">{k}={v}</span>
+                            ))}
+                          </div>
+                          {rule.annotations?.summary && (
+                            <p className="text-xs text-gray-400 mt-1 truncate">{rule.annotations.summary}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isFiring && (
+                          <button
+                            onClick={() => createIncidentFromAlert(rule)}
+                            disabled={creatingIncidentFor === rule.uid}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium disabled:opacity-50"
+                          >
+                            {creatingIncidentFor === rule.uid ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                            Create Incident
+                          </button>
+                        )}
+                        {rule.dashboard_uid && (
+                          <Link to={`/dashboards/grafana/${rule.dashboard_uid}`} className="inline-flex items-center gap-1 px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs">
+                            <BarChart3 className="w-3 h-3" /> Dashboard
+                          </Link>
+                        )}
+                        {grafanaUrl && (
+                          <a href={`${grafanaUrl}/alerting/list`} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, Bell } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Bell, BarChart3 } from 'lucide-react'
 import api from '../../services/api'
 import { useWebSocketEvent } from '../../hooks/useWebSocketEvent'
 
@@ -11,6 +11,7 @@ interface Alert {
   status: string
   startsAt: string
   service?: string
+  source?: 'platform' | 'grafana'
   labels?: Record<string, string>
 }
 
@@ -21,8 +22,7 @@ function timeAgo(dateStr: string): string {
   if (mins < 60) return `${mins}m ago`
   const hours = Math.floor(mins / 60)
   if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
 export default function ActiveAlerts() {
@@ -30,26 +30,51 @@ export default function ActiveAlerts() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchAll = async () => {
+      const combined: Alert[] = []
+
+      // Platform alerts
       try {
         const { data } = await api.get('/api/v1/alerts/active-alerts')
         const list = Array.isArray(data?.alerts) ? data.alerts : (Array.isArray(data) ? data : [])
-        setAlerts(list.slice(0, 10).map((a: any, i: number) => ({
-          id: a.id || `alert-${i}`,
-          alertname: a.alertname || a.name || 'Unknown',
-          severity: a.severity || a.labels?.severity || 'warning',
-          status: a.status || 'firing',
-          startsAt: a.startsAt || a.starts_at || a.created_at || new Date().toISOString(),
-          service: a.service || a.labels?.service || a.labels?.job || undefined,
-          labels: a.labels,
-        })))
-      } catch {
-        setAlerts([])
-      } finally {
-        setLoading(false)
-      }
+        list.slice(0, 8).forEach((a: any, i: number) => {
+          combined.push({
+            id: a.id || `alert-${i}`,
+            alertname: a.alertname || a.name || 'Unknown',
+            severity: a.severity || a.labels?.severity || 'warning',
+            status: a.status || 'firing',
+            startsAt: a.startsAt || a.starts_at || a.created_at || new Date().toISOString(),
+            service: a.service || a.labels?.service || a.labels?.job || undefined,
+            source: 'platform',
+            labels: a.labels,
+          })
+        })
+      } catch { /* ignore */ }
+
+      // Grafana alert rules (firing only)
+      try {
+        const { data } = await api.get('/api/v1/grafana/alert-rules')
+        const rules = data?.rules || []
+        rules.filter((r: any) => ['alerting', 'firing', 'pending'].includes(r.state))
+          .slice(0, 5)
+          .forEach((r: any, i: number) => {
+            combined.push({
+              id: `gf-${r.uid || i}`,
+              alertname: r.title || 'Grafana Alert',
+              severity: r.labels?.severity || (r.state === 'firing' ? 'critical' : 'warning'),
+              status: r.state || 'firing',
+              startsAt: new Date().toISOString(),
+              service: r.labels?.service || r.labels?.job || undefined,
+              source: 'grafana',
+              labels: r.labels,
+            })
+          })
+      } catch { /* Grafana optional */ }
+
+      setAlerts(combined.slice(0, 10))
+      setLoading(false)
     }
-    fetch()
+    fetchAll()
   }, [])
 
   useWebSocketEvent<any>('alert.fired', (alertData: any) => {
@@ -60,6 +85,7 @@ export default function ActiveAlerts() {
       status: alertData.status || 'firing',
       startsAt: alertData.startsAt || new Date().toISOString(),
       service: alertData.service || alertData.labels?.service || undefined,
+      source: 'platform',
       labels: alertData.labels,
     }
     setAlerts(prev => [newAlert, ...prev.slice(0, 9)])
@@ -68,8 +94,7 @@ export default function ActiveAlerts() {
   const severityIcon = (sev: string) => {
     switch (sev) {
       case 'critical': return 'text-red-500'
-      case 'high':
-      case 'error': return 'text-orange-500'
+      case 'high': case 'error': return 'text-orange-500'
       case 'warning': return 'text-yellow-500'
       default: return 'text-blue-500'
     }
@@ -115,10 +140,13 @@ export default function ActiveAlerts() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{alert.alertname}</p>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {alert.service && (
-                    <span className="text-xs text-gray-500">{alert.service}</span>
-                  )}
+                  {alert.service && <span className="text-xs text-gray-500">{alert.service}</span>}
                   <span className="text-xs text-gray-400">{timeAgo(alert.startsAt)}</span>
+                  {alert.source === 'grafana' && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-orange-50 text-orange-600 font-medium flex items-center gap-0.5">
+                      <BarChart3 className="w-2.5 h-2.5" /> Grafana
+                    </span>
+                  )}
                 </div>
               </div>
               <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${

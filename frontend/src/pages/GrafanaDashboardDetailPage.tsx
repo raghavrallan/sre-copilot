@@ -9,6 +9,7 @@ import {
   ExternalLink, Folder, Gauge, Loader2, AlertTriangle,
   CheckCircle2, Info, Tag, Code2, Activity, Table2,
   PieChart, Flame, Type, Clock, Maximize2, RefreshCw, Pause, Play,
+  Zap, Bell, Target,
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -320,12 +321,36 @@ function StatDisplay({ series, panel }: { series: SeriesData[]; panel: GrafanaPa
 
 function PanelCard({ panel, uid, grafanaUrl, refreshTick }: { panel: GrafanaPanel; uid: string; grafanaUrl: string; refreshTick: number }) {
   const [showQueries, setShowQueries] = useState(false)
+  const [showActions, setShowActions] = useState(false)
+  const [actionStatus, setActionStatus] = useState('')
   const meta = PANEL_META[panel.type] || { icon: BarChart3, color: '#6b7280', label: panel.type }
   const Icon = meta.icon
   const panelUrl = `${grafanaUrl}/d/${uid}?viewPanel=${panel.id}`
 
+  const handleCreateIncident = async () => {
+    setActionStatus('creating-incident')
+    try {
+      const expr = panel.targets?.[0]?.expr || ''
+      await api.post('/api/v1/grafana/create-incident', {
+        metric_name: panel.title,
+        expr,
+        panel_title: panel.title,
+        dashboard_uid: uid,
+        panel_id: panel.id,
+        severity: 'high',
+      })
+      setActionStatus('done')
+      setTimeout(() => setActionStatus(''), 2000)
+    } catch { setActionStatus('error'); setTimeout(() => setActionStatus(''), 2000) }
+  }
+
+  const handleTrackAsSLO = () => {
+    const expr = panel.targets?.[0]?.expr || ''
+    window.location.href = `/slos?create=true&expr=${encodeURIComponent(expr)}&name=${encodeURIComponent(panel.title)}`
+  }
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-all duration-200">
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-all duration-200 group">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50/50">
         <div className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: `${meta.color}15` }}>
@@ -335,6 +360,37 @@ function PanelCard({ panel, uid, grafanaUrl, refreshTick }: { panel: GrafanaPane
         {panel.alert && (
           <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">ALERT</span>
         )}
+        {/* Actions dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowActions(!showActions)}
+            className="p-0.5 rounded text-gray-300 hover:text-blue-600 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+            title="Actions"
+          >
+            <Zap className="w-3 h-3" />
+          </button>
+          {showActions && (
+            <div className="absolute right-0 top-5 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-40">
+              <button
+                onClick={handleCreateIncident}
+                disabled={actionStatus === 'creating-incident'}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <AlertTriangle className="w-3 h-3 text-red-500" />
+                {actionStatus === 'creating-incident' ? 'Creating...' : 'Create Incident'}
+              </button>
+              <button
+                onClick={handleTrackAsSLO}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <Target className="w-3 h-3 text-purple-500" />
+                Track as SLO
+              </button>
+              {actionStatus === 'done' && <p className="px-3 py-1 text-[10px] text-green-600">Created!</p>}
+              {actionStatus === 'error' && <p className="px-3 py-1 text-[10px] text-red-600">Failed</p>}
+            </div>
+          )}
+        </div>
         <a
           href={panelUrl}
           target="_blank"
