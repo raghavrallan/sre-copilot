@@ -387,16 +387,21 @@ async def sync_connection(
         if conn.provider == "github":
             from app.providers.github_provider import list_repos, list_user_repos, list_workflow_runs
             org_val = config.get("organization") or config.get("org")
-            repos = []
+
+            result = await list_user_repos(creds, limit=50)
+            repos = result.get("repos", [])
+            seen = {r.get("full_name") for r in repos}
+
             if org_val:
-                result = await list_repos(creds, org_val)
-                repos = result.get("repos", [])
-            else:
-                result = await list_user_repos(creds, limit=10)
-                repos = result.get("repos", [])
+                org_result = await list_repos(creds, org_val)
+                for r in org_result.get("repos", []):
+                    if r.get("full_name") not in seen:
+                        repos.append(r)
+                        seen.add(r.get("full_name"))
+
             repos_count = len(repos)
 
-            for repo in repos[:5]:
+            for repo in repos[:10]:
                 repo_full = repo.get("full_name")
                 if not repo_full:
                     continue
