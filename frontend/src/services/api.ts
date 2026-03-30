@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useAuthStore } from '../lib/stores/auth-store'
+import { useAuthStore } from '../stores/auth-store'
 
 const API_BASE_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:8580'
 

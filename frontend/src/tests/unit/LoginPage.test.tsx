@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import LoginPage from '../../pages/LoginPage'
+import LoginPage from '../../features/auth/pages/LoginPage'
 import { describe, it, expect } from 'vitest'
 
 describe('LoginPage', () => {

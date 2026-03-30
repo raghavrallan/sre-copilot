@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
-import { useAuthStore } from '../lib/stores/auth-store'
+import { useAuthStore } from '../stores/auth-store'
 import toast from 'react-hot-toast'
 
 const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8505'

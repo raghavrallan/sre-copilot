@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import api from '../../services/api'
-import { Incident } from '../../types/incident'
+import { Incident } from '../../features/incidents/types'
 import { useWebSocketEvent } from '../../hooks/useWebSocketEvent'
 
 function timeAgo(dateStr: string): string {
